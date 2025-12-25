@@ -1,0 +1,10 @@
+{
+    "zig.zls.path": "/home/anson/.local/bin/zls",
+    "zig.buildOption": "",
+    "[zig]": {
+        "editor.defaultFormatter": "ziglang.zig",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4
+    },
+    "zig.buildOnSaveProvider": true
+}
