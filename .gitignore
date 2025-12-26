@@ -1,3 +1,21 @@
-zig-out
-.zig-cache
-.vscode
+# Zig 构建产物
+zig-out/
+.zig-cache/
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 可执行文件
+main
+my_list
+qrcode
+*.exe
+*.out
+
+# 操作系统文件
+.DS_Store
+Thumbs.db

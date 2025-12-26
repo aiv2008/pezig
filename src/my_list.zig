@@ -1,5 +1,12 @@
 const std = @import("std");
 
+// 定义错误集合
+pub const ListError = error{
+    InvalidState,    // 链表状态无效
+    EmptyList,       // 链表为空
+    OutOfMemory,     // 内存分配失败
+};
+
 const Node = struct {
     data: i32,
     next: ?*Node,
@@ -22,18 +29,46 @@ pub const List: type = struct {
     capability: i32,
     size: i32,
     
+    iter: struct {
+        current_ptr: ?*Node,
+        list_ptr: ?*List,
+        pub fn next(self: *@This()) ?*Node{
+            if(self.current_ptr) |ptr| {
+                // 先保存当前节点
+                // const current = ptr;
+                // 移动到下一个节点
+                self.current_ptr = ptr.next;
+                // 返回当前节点（在移动之前）
+                return ptr;
+            }
+            return null;
+        }
+
+        pub fn reset(self: *@This()) void{
+            if (self.list_ptr) |list| {
+                self.current_ptr = list.head_ptr;
+            }
+        }
+    },
+    
     pub fn init(allocator: std.mem.Allocator) !List {
-        return new(allocator, std.math.pow(i32, 2, 3));
+        return List.new(allocator, 8);
     }
 
     pub fn new(allocator: std.mem.Allocator, capability: i32) !List{
-        return List{
+        var list =  List{
             .allocator= allocator,
             .head_ptr = null,
             .tail_ptr = null,
             .capability = capability,
             .size = 0,
+            .iter = undefined,
         };
+        list.iter = .{
+            .list_ptr = &list,
+            .current_ptr = null,
+        };
+        return list;
     }
     
     // 释放 List 及其所有 Node 的内存
@@ -61,7 +96,7 @@ pub const List: type = struct {
             self.tail_ptr = node;
         }else{
             // 非空链表：在尾部添加节点
-            const old_tail = self.tail_ptr orelse return error.InvalidState;
+            const old_tail = self.tail_ptr orelse return ListError.InvalidState;
             
             // 建立双向链接
             old_tail.next = node;      // 旧尾节点的 next 指向新节点
@@ -141,17 +176,23 @@ pub const List: type = struct {
         }
     }
 
-    pub fn top(self: *List) !i32{
+    pub fn top(self: *List) ListError!i32{
         if (self.tail_ptr) |ptr| {
             return ptr.data;
         }
-        return error.InvalidState;
+        return ListError.EmptyList;
     }
 
-    pub fn bottom(self: *List) !i32{
+    pub fn bottom(self: *List) ListError!i32{
         if (self.head_ptr) |ptr| {
             return ptr.data;
         }
-        return error.InvalidState;
+        return ListError.EmptyList;
+    }
+
+    pub fn iterator(self: *List) *@TypeOf(self.iter) {
+        self.iter.current_ptr = self.head_ptr;
+        self.iter.list_ptr = self;
+        return &self.iter;
     }
 };
