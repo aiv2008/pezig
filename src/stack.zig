@@ -25,4 +25,6 @@ pub const Stack = struct {
     pub fn deinit(self: *Stack) void {
         self.list.deinit();
     }
+
+    
 };
