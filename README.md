@@ -473,6 +473,221 @@ fn executeAction(action: SemanticAction, match: MatchResult) !void {
    - 错误恢复机制
    - 详细的错误信息
 
+## 当前实现进度
+
+### 已实现功能（阶段 1.1 部分完成）
+
+#### 1. PEGParser 基础结构
+
+已实现 `PEGParser` 结构体，包含：
+- `input: []const u8` - 待解析的 PEG 语法字符串
+- `position: usize` - 当前解析位置
+- `rules: std.StringHashMap(*Rule)` - 存储解析出的规则（使用指针存储，便于内存管理）
+- `allocator: std.mem.Allocator` - 内存分配器
+
+```zig
+pub const PEGParser = struct {
+    input: []const u8,
+    position: usize,
+    rules: std.StringHashMap(*Rule),
+    allocator: std.mem.Allocator,
+    
+    pub fn init(allocator: std.mem.Allocator, input: []const u8) PEGParser {
+        return PEGParser{
+            .input = input,
+            .position = 0,
+            .rules = std.StringHashMap(*Rule).init(allocator),
+            .allocator = allocator,
+        };
+    }
+};
+```
+
+#### 2. 基础辅助函数
+
+实现了以下辅助函数，用于解析过程中的字符处理：
+
+- **`skipWhitespace()`** - 跳过空白字符（空格、制表符、换行符）
+- **`isAtEnd()`** - 检查是否到达输入末尾
+- **`peek()`** - 获取当前字符（不移动位置指针）
+- **`advance()`** - 读取当前字符并移动位置指针
+
+#### 3. 标识符解析
+
+实现了 `parseIdentifier()` 函数，用于解析规则名：
+- 支持字母、数字、下划线
+- 必须以字母或下划线开头
+- 返回解析出的标识符字符串切片
+
+```zig
+pub fn parseIdentifier(self: *PEGParser) !?[]const u8 {
+    self.skipWhitespace();
+    if (self.isAtEnd()) return null;
+    
+    const first_char = self.input[self.position];
+    if (!std.ascii.isAlphabetic(first_char) and first_char != '_') {
+        return null;
+    }
+    
+    const start_pos = self.position;
+    self.position += 1;
+    
+    while (!self.isAtEnd()) {
+        const ch = self.input[self.position];
+        if (std.ascii.isAlphanumeric(ch) or ch == '_') {
+            self.position += 1;
+        } else {
+            break;
+        }
+    }
+    
+    return self.input[start_pos..self.position];
+}
+```
+
+#### 4. 字符串字面量解析
+
+实现了 `parseString()` 函数，用于解析 PEG 语法中的字符串字面量：
+- 支持双引号包围的字符串
+- 返回引号内的内容（不包括引号本身）
+- 包含错误处理（未闭合字符串检测）
+
+```zig
+pub fn parseString(self: *PEGParser) !?[]const u8 {
+    self.skipWhitespace();
+    if (self.isAtEnd()) return null;
+    
+    if (self.input[self.position] != '"') {
+        return null;
+    }
+    
+    self.position += 1;
+    const start_pos = self.position;
+    
+    while (!self.isAtEnd()) {
+        if (self.peek() == '"') {
+            break;
+        }
+        self.position += 1;
+    }
+    
+    if (self.isAtEnd()) {
+        return error.UnterminatedString;
+    }
+    
+    const end_pos = self.position;
+    self.position += 1; // 跳过结束引号
+    
+    return self.input[start_pos..end_pos];
+}
+```
+
+#### 5. 规则定义解析（基础版本）
+
+实现了 `parseRuleDefinition()` 函数，用于解析完整的规则定义：
+- 解析规则名
+- 识别 `=` 和 `{}` 语法
+- 目前返回占位规则（规则体解析待实现）
+
+```zig
+pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *Rule } {
+    self.skipWhitespace();
+    const ident_opt = try self.parseIdentifier();
+    const name = ident_opt orelse return ast_errors.AstError.NotAnAst;
+    
+    // 跳过 '='
+    self.skipWhitespace();
+    if (self.peek() != '=') return ast_errors.AstError.NotAnAst;
+    _ = self.advance();
+    
+    // 跳过 '{'
+    self.skipWhitespace();
+    if (self.peek() != '{') return ast_errors.AstError.NotAnAst;
+    _ = self.advance();
+    
+    // TODO: 解析规则体（下一步实现）
+    const rule_ptr = try self.allocator.create(Rule);
+    rule_ptr.* = Rule{ .literal = "TODO" };
+    
+    // 跳过 '}'
+    self.skipWhitespace();
+    if (self.peek() != '}') return ast_errors.AstError.NotAnAst;
+    _ = self.advance();
+    
+    return .{
+        .name = name,
+        .rule = rule_ptr,
+    };
+}
+```
+
+#### 6. 内存管理
+
+实现了完整的内存管理机制：
+
+- **`freeRule()`** - 递归释放单个 Rule 及其所有嵌套规则
+  - 处理所有包含指针的 Rule 类型（sequence, choice, optional, repeat 等）
+  - 正确处理嵌套结构的释放
+
+- **`deinit()`** - 释放 PEGParser 及其所有规则
+  - 遍历 HashMap 中的所有规则
+  - 使用 `freeRule()` 递归释放
+  - 释放 HashMap 本身
+
+```zig
+fn freeRule(self: *PEGParser, rule: *Rule) void {
+    switch (rule.*) {
+        .sequence => |seq| {
+            self.freeRule(seq.left);
+            self.freeRule(seq.right);
+            self.allocator.destroy(rule);
+        },
+        .choice => |ch| {
+            self.freeRule(ch.left);
+            self.freeRule(ch.right);
+            self.allocator.destroy(rule);
+        },
+        // ... 其他类型的处理
+        else => {
+            self.allocator.destroy(rule);
+        },
+    }
+}
+
+pub fn deinit(self: *PEGParser) void {
+    var it = self.rules.iterator();
+    while (it.next()) |entry| {
+        self.freeRule(entry.value_ptr.*);
+    }
+    self.rules.deinit();
+}
+```
+
+### 设计决策
+
+1. **HashMap 存储指针而非值**：`std.StringHashMap(*Rule)` 而不是 `std.StringHashMap(Rule)`
+   - 优点：更高效（避免大结构体复制）、便于共享规则、递归释放简单
+   - 缺点：需要手动管理内存
+
+2. **递归内存释放**：所有包含指针的 Rule 类型都通过 `freeRule()` 递归释放
+   - 确保没有内存泄漏
+   - 正确处理嵌套结构
+
+### 下一步待实现
+
+1. **规则体表达式解析**
+   - 实现操作符优先级处理（`|`, `~` 等）
+   - 解析后缀操作符（`?`, `+`, `*`）
+   - 解析前缀操作符（`!`, `&`, `_`, `@`）
+
+2. **完整规则解析**
+   - 替换 `parseRuleDefinition()` 中的占位规则
+   - 实现完整的表达式解析
+
+3. **主解析函数**
+   - 实现 `parse()` 方法，解析整个 PEG 语法定义
+   - 将所有规则存储到 HashMap 中
+
 ## Zig 实现优势
 
 ### 1. 编译时计算
