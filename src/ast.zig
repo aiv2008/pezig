@@ -1,4 +1,5 @@
 const std = @import("std");
+const ast_errors = @import("errors.zig");
 
 pub const Rule = union(enum) {
     // 字面量匹配
@@ -82,13 +83,13 @@ pub const MatchResult = struct {
 pub const PEGParser = struct {
     input: []const u8,
     position: usize,
-    rules: std.StringHashMap(Rule),
+    rules: std.StringHashMap(*Rule),
     allocator: std.mem.Allocator,
     pub fn init(allocator: std.mem.Allocator, input: []const u8) PEGParser{
         return PEGParser{
             .input = input,
             .position = 0,
-            .rules = std.StringHashMap(Rule).init(allocator),
+            .rules = std.StringHashMap(*Rule).init(allocator),
             .allocator = allocator,
         };
     }
@@ -197,5 +198,130 @@ pub const PEGParser = struct {
         
         // 9. 返回引号内的字符串（不包括引号本身）
         return self.input[start_pos..end_pos];
+    }
+
+    // 第五步：解析规则定义
+    // PEG 语法格式：rule_name = { rule_body }
+    // 例如：expression = { term ~ ("+" | "-") ~ term }
+    // 思考：
+    // 如何识别规则定义的各个部分？
+    // 规则名（identifier）
+    // =
+    // {
+    // 规则体（表达式）
+    // }
+    // 解析顺序：
+    // 解析规则名
+    // 跳过空白，匹配 =
+    // 跳过空白，匹配 {
+    // 解析规则体（表达式，下一步实现）
+    // 匹配 }
+    // 任务：实现 parseRuleDefinition 函数
+    // 解析完整的规则定义，例如: expression = { term ~ ("+" | "-") ~ term }
+    // 返回值：规则名和规则体的元组，或错误
+    pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *Rule } {
+        // 1. 解析规则名（使用 parseIdentifier）
+        self.skipWhitespace();
+        const ident_opt = try self.parseIdentifier();
+        const name = ident_opt orelse return ast_errors.AstError.NotAnAst;
+        
+        // 2. 跳过空白，检查并跳过 '='
+        self.skipWhitespace();
+        if(self.peek() != '='){
+            return ast_errors.AstError.NotAnAst;
+        }
+        _ = self.advance(); // 跳过 '='
+        
+        // 3. 跳过空白，检查并跳过 '{'
+        self.skipWhitespace();
+        if(self.peek() != '{'){
+            return ast_errors.AstError.NotAnAst;
+        }
+        _ = self.advance(); // 跳过 '{'
+        
+        // 4. 暂时先创建一个简单的占位规则（下一步再实现解析规则体）
+        // 注意：需要分配内存，因为返回的是 *Rule
+        const rule_ptr = try self.allocator.create(Rule);
+        rule_ptr.* = Rule{ .literal = "TODO" };
+        
+        // 5. 跳过空白，查找并跳过 '}'
+        self.skipWhitespace();
+        if(self.peek() != '}'){
+            return ast_errors.AstError.NotAnAst;
+        }
+        _ = self.advance(); // 跳过 '}'
+        
+        // 6. 返回结构体（匿名结构体字面量语法）
+        return .{
+            .name = name,
+            .rule = rule_ptr,
+        };
+    }
+
+    // 释放单个 Rule 及其所有嵌套的规则
+    fn freeRule(self: *PEGParser, rule: *Rule) void {
+        switch (rule.*) {
+            // 对于包含指针的 Rule，需要递归释放
+            .sequence => |seq| {
+                self.freeRule(seq.left);
+                self.freeRule(seq.right);
+                self.allocator.destroy(rule);
+            },
+            .choice => |ch| {
+                self.freeRule(ch.left);
+                self.freeRule(ch.right);
+                self.allocator.destroy(rule);
+            },
+            .optional => |opt| {
+                self.freeRule(opt);
+                self.allocator.destroy(rule);
+            },
+            .repeat => |rep| {
+                self.freeRule(rep.rule);
+                self.allocator.destroy(rule);
+            },
+            .not_predicate => |pred| {
+                self.freeRule(pred);
+                self.allocator.destroy(rule);
+            },
+            .and_predicate => |pred| {
+                self.freeRule(pred);
+                self.allocator.destroy(rule);
+            },
+            .silent => |silent| {
+                self.freeRule(silent);
+                self.allocator.destroy(rule);
+            },
+            .atomic => |atomic| {
+                self.freeRule(atomic);
+                self.allocator.destroy(rule);
+            },
+            .precedence => |prec| {
+                // precedence 中的 rules 是 []Rule（值类型），不需要单独释放
+                // 但需要释放 levels 中的 rule 指针
+                for (prec.levels) |level| {
+                    self.freeRule(level.rule);
+                }
+                self.allocator.free(prec.rules);
+                self.allocator.free(prec.levels);
+                self.allocator.destroy(rule);
+            },
+            // 对于不包含指针的类型（literal, regex, rule_ref），直接释放
+            .literal, .regex, .rule_ref => {
+                self.allocator.destroy(rule);
+            },
+        }
+    }
+
+    // 释放 PEGParser 及其所有规则
+    pub fn deinit(self: *PEGParser) void {
+        // 释放所有规则
+        var it = self.rules.iterator();
+        while (it.next()) |entry| {
+            // entry.value_ptr.* 获取 HashMap 中存储的 *Rule
+            // 然后递归释放规则及其所有嵌套规则
+            self.freeRule(entry.value_ptr.*);
+        }
+        self.rules.deinit();
     }
 };
