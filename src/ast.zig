@@ -275,9 +275,9 @@ pub const PEGParser = struct {
                 // 调用 parseString，创建 literal 规则
                 const str_opt = try self.parseString();
                 const str = str_opt orelse return ast_errors.AstError.Unterminated;
-
+                const str_copy = try self.allocator.dupe(u8, str);
                 const rule_ptr = try self.allocator.create(Rule);
-                rule_ptr.* = Rule{ .literal = str };
+                rule_ptr.* = Rule{ .literal = str_copy };
                 return rule_ptr;
             }
 
@@ -302,7 +302,8 @@ pub const PEGParser = struct {
         const ident_opt = try self.parseIdentifier();
         if (ident_opt) |name| {
             const rule_ptr = try self.allocator.create(Rule);
-            rule_ptr.* = Rule{ .rule_ref = name };
+            const name_copy = try self.allocator.dupe(u8, name);
+            rule_ptr.* = Rule{ .rule_ref = name_copy };
             return rule_ptr;
         }
 

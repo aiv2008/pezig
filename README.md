@@ -673,18 +673,92 @@ pub fn deinit(self: *PEGParser) void {
    - 确保没有内存泄漏
    - 正确处理嵌套结构
 
+#### 7. 表达式解析（部分完成）
+
+已实现基础的表达式解析功能：
+
+- **`parsePrimary()`** - 解析原子表达式
+  - ✅ 字符串字面量解析（`"hello"`）
+  - ✅ 规则引用解析（`term`）
+  - ⏳ 括号表达式（`(expression)`）待实现
+
+- **`parseExpression()`** - 解析表达式，处理选择操作符
+  - ✅ 选择操作符 `|` 的处理
+  - ⏳ 序列操作符 `~` 待实现（需要 parseSequence）
+
+```zig
+// parsePrimary - 解析原子表达式
+fn parsePrimary(self: *PEGParser) !*Rule {
+    // 解析字符串字面量
+    if (self.peek() == '"') {
+        const str_opt = try self.parseString();
+        const str = str_opt orelse return ast_errors.AstError.Unterminated;
+        const rule_ptr = try self.allocator.create(Rule);
+        rule_ptr.* = Rule{ .literal = str };
+        return rule_ptr;
+    }
+    
+    // 解析括号表达式（待实现）
+    // ...
+    
+    // 解析规则引用
+    const ident_opt = try self.parseIdentifier();
+    if (ident_opt) |name| {
+        const rule_ptr = try self.allocator.create(Rule);
+        rule_ptr.* = Rule{ .rule_ref = name };
+        return rule_ptr;
+    }
+    
+    return ast_errors.AstError.NotAnAst;
+}
+
+// parseExpression - 处理选择操作符 |
+fn parseExpression(self: *PEGParser) !*Rule {
+    var left = try self.parsePrimary();
+    
+    while (true) {
+        self.skipWhitespace();
+        if (self.peek() != '|') break;
+        _ = self.advance(); // 跳过 '|'
+        
+        const right = try self.parsePrimary();
+        
+        const choice_ptr = try self.allocator.create(Rule);
+        choice_ptr.* = Rule{ .choice = .{
+            .left = left,
+            .right = right,
+        } };
+        
+        left = choice_ptr;
+    }
+    
+    return left;
+}
+```
+
 ### 下一步待实现
 
-1. **规则体表达式解析**
-   - 实现操作符优先级处理（`|`, `~` 等）
+1. **修复字符串内存管理问题**
+   - ⚠️ **重要**：当前 `parsePrimary()` 中，字符串字面量和规则引用没有复制字符串
+   - 需要使用 `allocator.dupe()` 复制字符串，否则会出现生命周期问题
+
+2. **实现序列操作符解析**
+   - 实现 `parseSequence()` 函数，处理序列操作符 `~`
+   - 更新 `parseExpression()` 调用 `parseSequence()` 而不是 `parsePrimary()`
+
+3. **完成括号表达式解析**
+   - 在 `parsePrimary()` 中实现括号表达式处理
+   - 递归调用 `parseExpression()` 解析括号内的表达式
+
+4. **完善规则定义解析**
+   - 更新 `parseRuleDefinition()` 使用 `parseExpression()` 替换占位规则
+   - 确保规则体正确解析
+
+5. **实现后缀和前缀操作符**
    - 解析后缀操作符（`?`, `+`, `*`）
    - 解析前缀操作符（`!`, `&`, `_`, `@`）
 
-2. **完整规则解析**
-   - 替换 `parseRuleDefinition()` 中的占位规则
-   - 实现完整的表达式解析
-
-3. **主解析函数**
+6. **主解析函数**
    - 实现 `parse()` 方法，解析整个 PEG 语法定义
    - 将所有规则存储到 HashMap 中
 
