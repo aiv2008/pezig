@@ -306,8 +306,17 @@ pub const PEGParser = struct {
                 self.allocator.free(prec.levels);
                 self.allocator.destroy(rule);
             },
-            // 对于不包含指针的类型（literal, regex, rule_ref），直接释放
-            .literal, .regex, .rule_ref => {
+            // 对于包含字符串的类型，需要先释放字符串，再释放 Rule
+            .literal => |str| {
+                self.allocator.free(str);  // 释放字符串（通过 dupe 分配）
+                self.allocator.destroy(rule);  // 释放 Rule 本身
+            },
+            .regex => |str| {
+                self.allocator.free(str);  // 释放字符串
+                self.allocator.destroy(rule);
+            },
+            .rule_ref => |name| {
+                self.allocator.free(name);  // 释放规则名字符串
                 self.allocator.destroy(rule);
             },
         }
