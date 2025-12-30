@@ -284,17 +284,15 @@ pub const PEGParser = struct {
             // 3. 检查是否是括号表达式（以 ( 开头）
             if (ch == '(') {
                 _ = self.advance(); // 跳过 '('
-
-                // TODO: 递归调用 parseExpression（稍后实现）
-                // 暂时返回错误，表示未实现
-                return error.NotImplemented;
+                const rule_ptr = try self.parseExpression();
 
                 // 跳过 ')'
-                // self.skipWhitespace();
-                // if (self.peek() != ')') {
-                //     return error.ExpectedClosingParen;
-                // }
-                // _ = self.advance();
+                self.skipWhitespace();
+                if (self.peek() != ')') {
+                    return error.ExpectedClosingParen;
+                }
+                _ = self.advance();
+                return rule_ptr;
             }
         }
 
@@ -318,7 +316,7 @@ pub const PEGParser = struct {
     // 返回最终的规则
     fn parseExpression(self: *PEGParser) !*Rule {
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
-        var left = try self.parsePrimary();
+        var left = try self.parseSequence();
 
         // 2. 循环处理选择运算符 |
         while (true) {
@@ -329,7 +327,7 @@ pub const PEGParser = struct {
             _ = self.advance(); // 跳过 '|'
 
             // 3. 解析右边的序列
-            const right = try self.parsePrimary();
+            const right = try self.parseSequence();
 
             // 4. 创建 choice 规则
             const choice_ptr = try self.allocator.create(Rule);
@@ -342,6 +340,50 @@ pub const PEGParser = struct {
         }
 
         return left;
+    }
+
+    // parseSequence 处理序列运算符 ~（或隐式序列）。
+    fn parseSequence(self: *PEGParser) !*Rule {
+        // 实现
+        // 1. 先解析一个序列（暂时先调用 parsePrimary）
+        var left = try self.parsePrimary();
+        // 2. 循环处理序列运算符 ~
+        while (true) {
+            self.skipWhitespace();
+            if (self.peek() != '~') {
+                break;
+            }
+            _ = self.advance(); // 跳过 '~'
+
+            // 3. 解析右边的序列
+            const right = try self.parsePrimary();
+
+            // 4. 创建 sequence  规则
+            const sequence_ptr = try self.allocator.create(Rule);
+            sequence_ptr.* = Rule{ .sequence = .{
+                .left = left,
+                .right = right,
+            } };
+
+            left = sequence_ptr;
+        }
+
+        return left;
+    }
+
+    // 解析后缀操作符
+    // parsePostfix 应能解析：
+    // "a" → 字面量 "a"
+    // "a"? → 可选：optional("a")
+    // "a"+ → 一次或多次：repeat("a", min=1)
+    // "a"* → 零次或多次：repeat("a", min=0)
+    // "a"?+ → 多重后缀：先 ? 后 +
+    fn parsePostfix(self: *PEGParser) !Rule {
+        // var left = try self.parsePrimary();
+        // while (true) {
+        //     self.skipWhitespace();
+        // }
+        return error.Unterminated;
     }
 
     // 释放单个 Rule 及其所有嵌套的规则
@@ -394,15 +436,15 @@ pub const PEGParser = struct {
             },
             // 对于包含字符串的类型，需要先释放字符串，再释放 Rule
             .literal => |str| {
-                self.allocator.free(str);  // 释放字符串（通过 dupe 分配）
-                self.allocator.destroy(rule);  // 释放 Rule 本身
+                self.allocator.free(str); // 释放字符串（通过 dupe 分配）
+                self.allocator.destroy(rule); // 释放 Rule 本身
             },
             .regex => |str| {
-                self.allocator.free(str);  // 释放字符串
+                self.allocator.free(str); // 释放字符串
                 self.allocator.destroy(rule);
             },
             .rule_ref => |name| {
-                self.allocator.free(name);  // 释放规则名字符串
+                self.allocator.free(name); // 释放规则名字符串
                 self.allocator.destroy(rule);
             },
         }

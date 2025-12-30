@@ -182,6 +182,119 @@ pub const PEGParser = struct {
 };
 ```
 
+#### 操作符优先级处理机制
+
+在 PEG 解析器中，操作符优先级通过**递归下降解析器的函数调用层次**来实现。核心思想是：**优先级低的操作符在外层函数处理，优先级高的操作符在内层函数处理**。
+
+##### PEG 操作符优先级（从低到高）
+
+1. **选择** `|` - 最低优先级
+2. **序列** `~` - 中间优先级  
+3. **前缀** `!`, `&`, `_`, `@` - 较高优先级
+4. **后缀** `?`, `+`, `*` - 更高优先级
+5. **基本元素** - 最高优先级（字面量、规则引用、括号）
+
+##### 函数调用层次
+
+```
+parseExpression    ← 最外层，处理 | (优先级最低)
+  ↓ 调用
+parseSequence      ← 处理 ~
+  ↓ 调用
+parsePrefix        ← 处理 !, &, _, @
+  ↓ 调用
+parsePostfix       ← 处理 ?, +, *
+  ↓ 调用
+parsePrimary       ← 最内层，处理基本元素 (优先级最高)
+```
+
+##### 解析过程示例
+
+**例子 1：解析 `"a" ~ "b" | "c"`**
+
+```
+输入: "a" ~ "b" | "c"
+```
+
+1. **`parseExpression`**（处理 `|`）：
+   - 调用 `parseSequence()` 解析 `"a" ~ "b"`（在遇到 `|` 之前）
+   - 遇到 `|`，再调用 `parseSequence()` 解析 `"c"`
+   - 构建 `choice`：`("a" ~ "b") | "c"`
+
+2. **`parseSequence`**（处理 `~`）：
+   - 调用 `parsePrimary()` 解析 `"a"`
+   - 遇到 `~`
+   - 再调用 `parsePrimary()` 解析 `"b"`
+   - 构建 `sequence`：`"a" ~ "b"`
+
+3. **`parsePrimary`**（处理基本元素）：
+   - 识别 `"a"` 为字面量
+   - 返回 `Rule{ .literal = "a" }`
+
+**最终 AST 结构：**
+```
+choice
+├─ sequence
+│  ├─ literal: "a"
+│  └─ literal: "b"
+└─ literal: "c"
+```
+
+**例子 2：解析 `"a" | "b" ~ "c"`**
+
+```
+输入: "a" | "b" ~ "c"
+```
+
+由于 `|` 在外层处理，会先被识别：
+
+1. **`parseExpression`** 先遇到 `"a"`，调用 `parseSequence()`
+2. **`parseSequence`** 解析 `"a"`（单个元素，没有 `~`）
+3. **`parseExpression`** 遇到 `|`，继续解析右边
+4. **`parseExpression`** 调用 `parseSequence()` 解析 `"b" ~ "c"`
+5. 构建 `choice`：`"a" | ("b" ~ "c")`
+
+**结果**：`"a" | ("b" ~ "c")`，而不是 `("a" | "b") ~ "c"` ✅
+
+##### 关键理解点
+
+1. **优先级低的先处理**：
+   - `parseExpression` 处理 `|`，所以它先尝试解析整个序列，然后才处理 `|`
+
+2. **左结合性**：
+   ```zig
+   var left = try self.parseSequence();  // 先解析左边
+   const right = try self.parseSequence(); // 再解析右边
+   left = choice_ptr;  // 新的 left 包含了之前的 left 和 right
+   ```
+   这样构建的是左结合：`a | b | c` = `((a | b) | c)`
+
+3. **为什么这样能保证优先级？**
+   
+   `parseSequence` 只解析到基本元素级别就停止，不会解析 `|`（因为 `|` 的检查在外层 `parseExpression`）：
+   
+   ```zig
+   // parseExpression (外层)
+   var left = try self.parseSequence();  // 调用 parseSequence，不会解析到 | 就停止
+   if (peek() == '|') {                 // 这里才检查 |
+       const right = try self.parseSequence();
+   }
+   
+   // parseSequence (内层)
+   var left = try self.parsePrimary();   // 只解析到基本元素
+   if (peek() == '~') {                 // 只检查 ~，不检查 |
+       const right = try self.parsePrimary();
+   }
+   ```
+
+##### 总结
+
+- **函数调用层次 = 优先级**：外层函数处理低优先级操作符，内层函数处理高优先级操作符
+- **每个函数只处理自己的操作符**：其他操作符交给外层或内层函数处理
+- **解析顺序**：从最高优先级开始，逐步向外层构建 AST
+
+这就是为什么 `parseExpression` 调用 `parseSequence`，而 `parseSequence` 调用 `parsePrimary` 的原因。
+
 ### 4. 解析器生成器
 
 #### 方式 1：编译时代码生成（推荐）
