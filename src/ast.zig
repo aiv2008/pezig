@@ -1,5 +1,6 @@
 const std = @import("std");
 const ast_errors = @import("errors.zig");
+const stack = @import("stack.zig");
 
 pub const Rule = union(enum) {
     // 字面量匹配
@@ -346,7 +347,7 @@ pub const PEGParser = struct {
     fn parseSequence(self: *PEGParser) !*Rule {
         // 实现
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
-        var left = try self.parsePrimary();
+        var left = try self.parsePostfix();
         // 2. 循环处理序列运算符 ~
         while (true) {
             self.skipWhitespace();
@@ -356,7 +357,7 @@ pub const PEGParser = struct {
             _ = self.advance(); // 跳过 '~'
 
             // 3. 解析右边的序列
-            const right = try self.parsePrimary();
+            const right = try self.parsePostfix();
 
             // 4. 创建 sequence  规则
             const sequence_ptr = try self.allocator.create(Rule);
@@ -378,12 +379,94 @@ pub const PEGParser = struct {
     // "a"+ → 一次或多次：repeat("a", min=1)
     // "a"* → 零次或多次：repeat("a", min=0)
     // "a"?+ → 多重后缀：先 ? 后 +
-    fn parsePostfix(self: *PEGParser) !Rule {
+    fn parsePostfix(self: *PEGParser) !*Rule {
+        var left = try self.parsePrefix();
+        while (true) {
+            self.skipWhitespace();
+            switch (self.peek() orelse break) {
+                '?' => {
+                    //跳过?
+                    _ = self.advance();
+                    const optional_ptr = try self.allocator.create(Rule);
+                    optional_ptr.* = Rule{
+                        .optional = left,
+                    };
+                    left = optional_ptr;
+                },
+                '+' => {
+                    //跳过+
+                    _ = self.advance();
+                    const repeat_ptr = try self.allocator.create(Rule);
+                    repeat_ptr.* = Rule{ .repeat = .{
+                        .rule = left,
+                        .min = 1,
+                        .max = null,
+                    } };
+                    left = repeat_ptr;
+                },
+                '*' => {
+                    //跳过*
+                    _ = self.advance();
+                    const repeat_ptr = try self.allocator.create(Rule);
+                    repeat_ptr.* = Rule{ .repeat = .{
+                        .rule = left,
+                        .min = 0,
+                        .max = null,
+                    } };
+                    left = repeat_ptr;
+                },
+                else => {
+                    break;
+                },
+            }
+        }
+        return left;
+    }
+
+    fn parsePrefix(self: PEGParser) !*Rule {
         // var left = try self.parsePrimary();
-        // while (true) {
-        //     self.skipWhitespace();
-        // }
-        return error.Unterminated;
+        var stk = stack.Stack(u8);
+        var right = try self.allocator.create(Rule);
+        while (true) {
+            self.skipWhitespace();
+            switch (self.peek() orelse break) {
+                '!' | '&' | '_' | '@' => |c| {
+                    // 跳过'!' ,'&' , '_' , '@'
+                    _ = self.advance();
+                    stk.push(c);
+                },
+                else => {
+                    right = try self.parsePrimary();
+                    break;
+                },
+            }
+        }
+        while (!stk.isEmpty()) {
+            const c = stk.pop();
+            switch (c) {
+                '!' => {
+                    const not_predicate_ptr = try self.allocator.create(Rule);
+                    not_predicate_ptr.* = Rule{ .not_predicate = right };
+                    right = not_predicate_ptr;
+                },
+                '&' => {
+                    const and_predicate_ptr = try self.allocator.create(Rule);
+                    and_predicate_ptr.* = Rule{ .and_predicate = right };
+                    right = and_predicate_ptr;
+                },
+                '_' => {
+                    const silent_ptr = try self.allocator.create(Rule);
+                    silent_ptr.* = Rule{ .silent = right };
+                    right = silent_ptr;
+                },
+                '@' => {
+                    const atomic_ptr = try self.allocator.create(Rule);
+                    atomic_ptr.* = Rule{ .atomic = right };
+                    right = atomic_ptr;
+                },
+            }
+        }
+        return right;
     }
 
     // 释放单个 Rule 及其所有嵌套的规则

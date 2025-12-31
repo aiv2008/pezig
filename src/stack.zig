@@ -1,30 +1,36 @@
 const std = @import("std");
-const my_list = @import("my_list.zig");
 
-pub const Stack = struct {
-    list: my_list.List,
+pub fn Stack(comptime T: type) type {
+    return struct {
+        items: std.ArrayList(T),
+        allocator: std.mem.Allocator,
 
-    pub fn new(allocator: std.mem.Allocator) Stack{
-        return Stack{
-            .list = try my_list.List.init(allocator),
-        };
-    }
+        pub fn init(allocator: std.mem.Allocator) @This() {
+            return .{
+                .items = std.ArrayList(T).init(allocator),
+                .allocator = allocator,
+            };
+        }
 
-    pub fn push(self: *Stack, data: i32) !void{
-        try self.list.add(data);
-    }
+        pub fn deinit(self: *@This()) void {
+            self.items.deinit();
+        }
 
-    pub fn pop(self: *Stack) !i32{
-        self.list.del_tail();
-        return try self.list.top();
-    }
+        pub fn push(self: *@This(), item: T) !void {
+            try self.items.append(item);
+        }
 
-    pub fn print_stack(self: *Stack) void{
-        self.list.print_list();
-    }
-    pub fn deinit(self: *Stack) void {
-        self.list.deinit();
-    }
+        pub fn pop(self: *@This()) ?T {
+            return self.items.popOrNull();
+        }
 
-    
-};
+        pub fn peek(self: *@This()) ?T {
+            if (self.items.items.len == 0) return null;
+            return self.items.items[self.items.items.len - 1];
+        }
+
+        pub fn isEmpty(self: *@This()) bool {
+            return self.items.items.len == 0;
+        }
+    };
+}
