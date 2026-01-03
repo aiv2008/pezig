@@ -96,6 +96,31 @@ pub const PEGParser = struct {
         };
     }
 
+    // 主解析函数：解析整个 PEG 语法定义
+    // 语法格式示例：
+    //   rule1 = { "a" ~ "b" }
+    //   rule2 = { "c" | "d" }
+    pub fn parse(self: *PEGParser) !void {
+        // 循环解析规则定义，直到输入结束
+        while (!self.isAtEnd()) {
+            self.skipWhitespace();
+            
+            // 如果遇到空行或注释，跳过
+            if (self.isAtEnd()) {
+                break;
+            }
+            
+            // 解析一个规则定义
+            const rule_def = try self.parseRuleDefinition();
+            
+            // 将规则存储到 HashMap 中
+            try self.rules.put(rule_def.name, rule_def.rule);
+            
+            // 跳过规则定义后的空白字符
+            self.skipWhitespace();
+        }
+    }
+
     // 第二步：实现辅助函数（跳过空白、读取字符等）
     // 1. 跳过空白字符（空格、\t、\n、\r）
     fn skipWhitespace(self: *PEGParser) void {
@@ -225,7 +250,10 @@ pub const PEGParser = struct {
         // 1. 解析规则名（使用 parseIdentifier）
         self.skipWhitespace();
         const ident_opt = try self.parseIdentifier();
-        const name = ident_opt orelse return ast_errors.AstError.NotAnAst;
+        const name_slice = ident_opt orelse return ast_errors.AstError.NotAnAst;
+        
+        // 复制规则名（因为 name_slice 只是指向原始输入的切片）
+        const name = try self.allocator.dupe(u8, name_slice);
 
         // 2. 跳过空白，检查并跳过 '='
         self.skipWhitespace();
@@ -241,10 +269,8 @@ pub const PEGParser = struct {
         }
         _ = self.advance(); // 跳过 '{'
 
-        // 4. 暂时先创建一个简单的占位规则（下一步再实现解析规则体）
-        // 注意：需要分配内存，因为返回的是 *Rule
-        const rule_ptr = try self.allocator.create(Rule);
-        rule_ptr.* = Rule{ .literal = "TODO" };
+        // 4. 解析规则体（使用 parseExpression）
+        const rule_ptr = try self.parseExpression();
 
         // 5. 跳过空白，查找并跳过 '}'
         self.skipWhitespace();
@@ -423,50 +449,48 @@ pub const PEGParser = struct {
         return left;
     }
 
-    fn parsePrefix(self: PEGParser) !*Rule {
-        // var left = try self.parsePrimary();
-        var stk = stack.Stack(u8);
-        var right = try self.allocator.create(Rule);
-        while (true) {
-            self.skipWhitespace();
-            switch (self.peek() orelse break) {
-                '!' | '&' | '_' | '@' => |c| {
-                    // 跳过'!' ,'&' , '_' , '@'
-                    _ = self.advance();
-                    stk.push(c);
-                },
-                else => {
-                    right = try self.parsePrimary();
-                    break;
-                },
-            }
+    // 解析前缀操作符：!, &, _, @
+    // 前缀操作符是右结合的，例如 !!a 会被解析为 !(!a)
+    fn parsePrefix(self: *PEGParser) !*Rule {
+        self.skipWhitespace();
+        
+        // 检查是否有前缀操作符
+        const ch = self.peek() orelse return ast_errors.AstError.NotAnAst;
+        
+        switch (ch) {
+            '!' => {
+                _ = self.advance(); // 跳过 '!'
+                const inner = try self.parsePrefix(); // 递归解析内部表达式
+                const rule_ptr = try self.allocator.create(Rule);
+                rule_ptr.* = Rule{ .not_predicate = inner };
+                return rule_ptr;
+            },
+            '&' => {
+                _ = self.advance(); // 跳过 '&'
+                const inner = try self.parsePrefix(); // 递归解析内部表达式
+                const rule_ptr = try self.allocator.create(Rule);
+                rule_ptr.* = Rule{ .and_predicate = inner };
+                return rule_ptr;
+            },
+            '_' => {
+                _ = self.advance(); // 跳过 '_'
+                const inner = try self.parsePrefix(); // 递归解析内部表达式
+                const rule_ptr = try self.allocator.create(Rule);
+                rule_ptr.* = Rule{ .silent = inner };
+                return rule_ptr;
+            },
+            '@' => {
+                _ = self.advance(); // 跳过 '@'
+                const inner = try self.parsePrefix(); // 递归解析内部表达式
+                const rule_ptr = try self.allocator.create(Rule);
+                rule_ptr.* = Rule{ .atomic = inner };
+                return rule_ptr;
+            },
+            else => {
+                // 没有前缀操作符，直接解析基本元素
+                return try self.parsePrimary();
+            },
         }
-        while (!stk.isEmpty()) {
-            const c = stk.pop();
-            switch (c) {
-                '!' => {
-                    const not_predicate_ptr = try self.allocator.create(Rule);
-                    not_predicate_ptr.* = Rule{ .not_predicate = right };
-                    right = not_predicate_ptr;
-                },
-                '&' => {
-                    const and_predicate_ptr = try self.allocator.create(Rule);
-                    and_predicate_ptr.* = Rule{ .and_predicate = right };
-                    right = and_predicate_ptr;
-                },
-                '_' => {
-                    const silent_ptr = try self.allocator.create(Rule);
-                    silent_ptr.* = Rule{ .silent = right };
-                    right = silent_ptr;
-                },
-                '@' => {
-                    const atomic_ptr = try self.allocator.create(Rule);
-                    atomic_ptr.* = Rule{ .atomic = right };
-                    right = atomic_ptr;
-                },
-            }
-        }
-        return right;
     }
 
     // 释放单个 Rule 及其所有嵌套的规则
@@ -535,9 +559,12 @@ pub const PEGParser = struct {
 
     // 释放 PEGParser 及其所有规则
     pub fn deinit(self: *PEGParser) void {
-        // 释放所有规则
+        // 释放所有规则和规则名
         var it = self.rules.iterator();
         while (it.next()) |entry| {
+            // 释放规则名（HashMap 的 key，通过 allocator.dupe 分配）
+            self.allocator.free(entry.key_ptr.*);
+            
             // entry.value_ptr.* 获取 HashMap 中存储的 *Rule
             // 然后递归释放规则及其所有嵌套规则
             self.freeRule(entry.value_ptr.*);

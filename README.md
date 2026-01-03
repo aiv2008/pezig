@@ -786,94 +786,256 @@ pub fn deinit(self: *PEGParser) void {
    - 确保没有内存泄漏
    - 正确处理嵌套结构
 
-#### 7. 表达式解析（部分完成）
+#### 7. 表达式解析（✅ 已完成）
 
-已实现基础的表达式解析功能：
+已实现完整的表达式解析功能链，按照 PEG 操作符优先级从低到高：
+
+**完整的解析函数层次：**
+1. **`parseExpression()`** - 处理选择操作符 `|`（最低优先级）
+2. **`parseSequence()`** - 处理序列操作符 `~`
+3. **`parsePostfix()`** - 处理后缀操作符 `?`, `+`, `*`
+4. **`parsePrefix()`** - 处理前缀操作符 `!`, `&`, `_`, `@`
+5. **`parsePrimary()`** - 处理基本元素（最高优先级）
 
 - **`parsePrimary()`** - 解析原子表达式
-  - ✅ 字符串字面量解析（`"hello"`）
-  - ✅ 规则引用解析（`term`）
-  - ⏳ 括号表达式（`(expression)`）待实现
+  - ✅ 字符串字面量解析（`"hello"`），使用 `allocator.dupe()` 复制字符串
+  - ✅ 规则引用解析（`term`），使用 `allocator.dupe()` 复制字符串
+  - ✅ 括号表达式（`(expression)`），递归调用 `parseExpression()`
 
-- **`parseExpression()`** - 解析表达式，处理选择操作符
-  - ✅ 选择操作符 `|` 的处理
-  - ⏳ 序列操作符 `~` 待实现（需要 parseSequence）
+- **`parsePrefix()`** - 解析前缀操作符
+  - ✅ 否定前瞻 `!`
+  - ✅ 肯定前瞻 `&`
+  - ✅ 静默 `_`
+  - ✅ 原子 `@`
+  - 前缀操作符是右结合的，例如 `!!a` 会被解析为 `!(!a)`
+
+- **`parsePostfix()`** - 解析后缀操作符
+  - ✅ 可选 `?` → `Rule.optional`
+  - ✅ 一次或多次 `+` → `Rule.repeat{min=1, max=null}`
+  - ✅ 零次或多次 `*` → `Rule.repeat{min=0, max=null}`
+  - 支持多个后缀操作符链式使用，如 `"a"?+`
+
+- **`parseSequence()`** - 解析序列操作符 `~`
+  - ✅ 支持多个序列操作符连接，如 `A ~ B ~ C`
+  - ✅ 正确构建左结合的序列结构
+
+- **`parseExpression()`** - 解析选择操作符 `|`
+  - ✅ 支持多个选择操作符连接，如 `A | B | C`
+  - ✅ 正确构建左结合的选择结构
 
 ```zig
-// parsePrimary - 解析原子表达式
-fn parsePrimary(self: *PEGParser) !*Rule {
-    // 解析字符串字面量
-    if (self.peek() == '"') {
-        const str_opt = try self.parseString();
-        const str = str_opt orelse return ast_errors.AstError.Unterminated;
-        const rule_ptr = try self.allocator.create(Rule);
-        rule_ptr.* = Rule{ .literal = str };
-        return rule_ptr;
-    }
-    
-    // 解析括号表达式（待实现）
-    // ...
-    
-    // 解析规则引用
-    const ident_opt = try self.parseIdentifier();
-    if (ident_opt) |name| {
-        const rule_ptr = try self.allocator.create(Rule);
-        rule_ptr.* = Rule{ .rule_ref = name };
-        return rule_ptr;
-    }
-    
-    return ast_errors.AstError.NotAnAst;
-}
-
-// parseExpression - 处理选择操作符 |
+// 完整的解析函数调用链
 fn parseExpression(self: *PEGParser) !*Rule {
-    var left = try self.parsePrimary();
+    var left = try self.parseSequence();  // 调用 parseSequence
     
     while (true) {
         self.skipWhitespace();
         if (self.peek() != '|') break;
-        _ = self.advance(); // 跳过 '|'
-        
-        const right = try self.parsePrimary();
+        _ = self.advance();
+        const right = try self.parseSequence();
         
         const choice_ptr = try self.allocator.create(Rule);
-        choice_ptr.* = Rule{ .choice = .{
-            .left = left,
-            .right = right,
-        } };
-        
+        choice_ptr.* = Rule{ .choice = .{ .left = left, .right = right } };
         left = choice_ptr;
     }
-    
     return left;
+}
+
+fn parseSequence(self: *PEGParser) !*Rule {
+    var left = try self.parsePostfix();  // 调用 parsePostfix
+    
+    while (true) {
+        self.skipWhitespace();
+        if (self.peek() != '~') break;
+        _ = self.advance();
+        const right = try self.parsePostfix();
+        
+        const sequence_ptr = try self.allocator.create(Rule);
+        sequence_ptr.* = Rule{ .sequence = .{ .left = left, .right = right } };
+        left = sequence_ptr;
+    }
+    return left;
+}
+
+fn parsePostfix(self: *PEGParser) !*Rule {
+    var left = try self.parsePrefix();  // 调用 parsePrefix
+    
+    while (true) {
+        self.skipWhitespace();
+        switch (self.peek() orelse break) {
+            '?' => {
+                _ = self.advance();
+                const optional_ptr = try self.allocator.create(Rule);
+                optional_ptr.* = Rule{ .optional = left };
+                left = optional_ptr;
+            },
+            '+' => {
+                _ = self.advance();
+                const repeat_ptr = try self.allocator.create(Rule);
+                repeat_ptr.* = Rule{ .repeat = .{ .rule = left, .min = 1, .max = null } };
+                left = repeat_ptr;
+            },
+            '*' => {
+                _ = self.advance();
+                const repeat_ptr = try self.allocator.create(Rule);
+                repeat_ptr.* = Rule{ .repeat = .{ .rule = left, .min = 0, .max = null } };
+                left = repeat_ptr;
+            },
+            else => break,
+        }
+    }
+    return left;
+}
+
+fn parsePrefix(self: *PEGParser) !*Rule {
+    self.skipWhitespace();
+    const ch = self.peek() orelse return ast_errors.AstError.NotAnAst;
+    
+    switch (ch) {
+        '!', '&', '_', '@' => {
+            _ = self.advance();
+            const inner = try self.parsePrefix();  // 递归调用
+            const rule_ptr = try self.allocator.create(Rule);
+            rule_ptr.* = switch (ch) {
+                '!' => Rule{ .not_predicate = inner },
+                '&' => Rule{ .and_predicate = inner },
+                '_' => Rule{ .silent = inner },
+                '@' => Rule{ .atomic = inner },
+                else => unreachable,
+            };
+            return rule_ptr;
+        },
+        else => return try self.parsePrimary(),  // 调用 parsePrimary
+    }
+}
+
+fn parsePrimary(self: *PEGParser) !*Rule {
+    // 解析字符串字面量、括号表达式、规则引用
+    // 使用 allocator.dupe() 复制字符串
 }
 ```
 
-### 下一步待实现
+#### 8. 规则定义解析（✅ 已完成）
 
-1. **修复字符串内存管理问题**
-   - ⚠️ **重要**：当前 `parsePrimary()` 中，字符串字面量和规则引用没有复制字符串
-   - 需要使用 `allocator.dupe()` 复制字符串，否则会出现生命周期问题
+- **`parseRuleDefinition()`** - 解析完整的规则定义
+  - ✅ 解析规则名并复制字符串
+  - ✅ 识别 `=` 和 `{}` 语法
+  - ✅ 使用 `parseExpression()` 解析规则体
+  - ✅ 返回规则名和规则指针
 
-2. **实现序列操作符解析**
-   - 实现 `parseSequence()` 函数，处理序列操作符 `~`
-   - 更新 `parseExpression()` 调用 `parseSequence()` 而不是 `parsePrimary()`
+```zig
+pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *Rule } {
+    const name_slice = try self.parseIdentifier();
+    const name = try self.allocator.dupe(u8, name_slice);  // 复制规则名
+    
+    // 跳过 '=' 和 '{'
+    // ...
+    
+    const rule_ptr = try self.parseExpression();  // 解析规则体
+    
+    // 跳过 '}'
+    // ...
+    
+    return .{ .name = name, .rule = rule_ptr };
+}
+```
 
-3. **完成括号表达式解析**
-   - 在 `parsePrimary()` 中实现括号表达式处理
-   - 递归调用 `parseExpression()` 解析括号内的表达式
+#### 9. 主解析函数（✅ 已完成）
 
-4. **完善规则定义解析**
-   - 更新 `parseRuleDefinition()` 使用 `parseExpression()` 替换占位规则
-   - 确保规则体正确解析
+- **`parse()`** - 解析整个 PEG 语法定义
+  - ✅ 循环解析多个规则定义
+  - ✅ 将所有规则存储到 HashMap 中
+  - ✅ 处理空白字符和规则分隔
 
-5. **实现后缀和前缀操作符**
-   - 解析后缀操作符（`?`, `+`, `*`）
-   - 解析前缀操作符（`!`, `&`, `_`, `@`）
+```zig
+pub fn parse(self: *PEGParser) !void {
+    while (!self.isAtEnd()) {
+        self.skipWhitespace();
+        if (self.isAtEnd()) break;
+        
+        const rule_def = try self.parseRuleDefinition();
+        try self.rules.put(rule_def.name, rule_def.rule);
+        
+        self.skipWhitespace();
+    }
+}
+```
 
-6. **主解析函数**
-   - 实现 `parse()` 方法，解析整个 PEG 语法定义
-   - 将所有规则存储到 HashMap 中
+#### 10. 内存管理完善（✅ 已完成）
+
+- **更新 `deinit()`** - 释放所有资源
+  - ✅ 释放所有规则名字符串（HashMap 的 key）
+  - ✅ 释放所有规则对象及其嵌套规则
+  - ✅ 释放 HashMap 本身
+
+```zig
+pub fn deinit(self: *PEGParser) void {
+    var it = self.rules.iterator();
+    while (it.next()) |entry| {
+        self.allocator.free(entry.key_ptr.*);  // 释放规则名
+        self.freeRule(entry.value_ptr.*);      // 释放规则对象
+    }
+    self.rules.deinit();
+}
+```
+
+### 阶段 1.1 完成总结
+
+**✅ 已完成的功能：**
+- PEG 规则解析器完整实现
+- 所有 PEG 操作符支持（`~`, `|`, `?`, `+`, `*`, `!`, `&`, `_`, `@`）
+- 完整的操作符优先级处理
+- 括号表达式支持
+- 规则定义解析
+- 主解析函数
+- 完整的内存管理
+
+**测试示例：**
+
+```zig
+const gpa = std.heap.GeneralPurposeAllocator(.{}){};
+defer _ = gpa.deinit();
+const allocator = gpa.allocator();
+
+const grammar = 
+    \\expression = { term ~ ("+" | "-") ~ term }
+    \\term = { factor ~ ("*" | "/") ~ factor }
+    \\factor = { number | "(" ~ expression ~ ")" }
+    \\number = { ASCII_DIGIT+ }
+;
+
+var parser = PEGParser.init(allocator, grammar);
+try parser.parse();
+defer parser.deinit();
+
+// 检查解析结果
+const expr_rule = parser.rules.get("expression");
+// expr_rule 现在包含完整的规则 AST
+```
+
+### 下一步待实现（阶段 1.2：匹配引擎）
+
+1. **实现基础匹配引擎**
+   - 实现 `RuntimeParser` 结构体
+   - 实现 `match()` 方法，根据规则匹配输入字符串
+   - 返回 `MatchResult` 对象
+
+2. **实现各种规则类型的匹配**
+   - ✅ 字面量匹配（`Rule.literal`）
+   - ⏳ 规则引用匹配（`Rule.rule_ref`）
+   - ⏳ 序列匹配（`Rule.sequence`）
+   - ⏳ 选择匹配（`Rule.choice`）
+   - ⏳ 可选匹配（`Rule.optional`）
+   - ⏳ 重复匹配（`Rule.repeat`）
+   - ⏳ 前缀操作符匹配（`!`, `&`, `_`, `@`）
+
+3. **实现回溯机制**
+   - PEG 使用有序选择，需要支持回溯
+   - 实现匹配状态保存和恢复
+
+4. **实现错误处理**
+   - 提供详细的错误信息
+   - 错误位置定位
 
 ## Zig 实现优势
 
