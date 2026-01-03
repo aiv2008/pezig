@@ -1,7 +1,10 @@
 const std = @import("std");
 const Rule = @import("ast.zig").Rule;
 const ast_errors = @import("errors.zig");
+const MatchResult = @import("ast.zig").MatchResult;
 
+//PEGParser中的input不是要翻译的字符串，而是规则字符串；
+// 譬如 `a = {"b" ~ "c"}`整个规则字符串就是PEGParser的输入input
 pub const PEGParser = struct {
     input: []const u8,
     position: usize,
@@ -491,4 +494,20 @@ pub const PEGParser = struct {
         }
         self.rules.deinit();
     }
+};
+
+pub const RuntimeParser = struct {
+    // 你需要定义哪些字段？
+    // 1. rules - 存储规则的 HashMap
+    // 2. allocator - 内存分配器
+    
+    // // 初始化函数
+    // pub fn init(allocator: std.mem.Allocator, parser: *PEGParser) RuntimeParser {
+    //     // TODO: 如何初始化？
+    // }
+    
+    // // 主匹配方法：根据规则名匹配输入字符串
+    // pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
+    //     // TODO: 如何匹配？
+    // }
 };
