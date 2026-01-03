@@ -1,47 +1,102 @@
 const std = @import("std");
-const root = @import("root.zig");
-const my_list = @import("my_list.zig");
-const my_stack = @import("stack.zig");
-pub fn main() !void{
+const PEGParser = @import("parser.zig").PEGParser;
+
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var stack = my_stack.Stack.new(allocator);
-    defer{
-        stack.deinit();
-    }
-    try stack.push(1);
-    try stack.push(2);
-    try stack.push(3);
-    try stack.push(4);
-    _ = try stack.pop();
-    // stack.print_stack();
-    const iter = stack.list.iterator();
-    while (iter.next()) |ptr| {
-        std.debug.print("{}", .{ptr.data});
+    std.debug.print("=== PEG 解析器测试 ===\n\n", .{});
+
+    // 测试 1: 简单的字面量规则
+    std.debug.print("测试 1: 解析简单规则\n", .{});
+    {
+        const grammar = "hello = { \"world\" }";
+        var parser = PEGParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
+
+        if (parser.rules.get("hello")) |rule| {
+            std.debug.print("  规则 'hello' 解析成功\n", .{});
+            std.debug.print("  规则类型: literal\n", .{});
+            std.debug.print("  规则值: \"{s}\"\n\n", .{rule.literal});
+        }
     }
 
-    // var list = try my_list.List.init(allocator);
-    // defer {
-    //     list.deinit();  // 释放所有 Node
-    // }
-    // const list_ptr = &list;
-    
-    // try list.add(1);
-    // try list.add(2);
-    // try list.add(3);
-    // try list.add(3);
-    // try list_ptr.add(4);  // 修正：使用实例方法调用
-    // list_ptr.del_tail();
-    // list_ptr.del_tail();
-    // list_ptr.del_tail();
-    // list_ptr.del_tail();
-    // // list_ptr.del_tail();
-    // // list.print_list();
-    // var iter = list_ptr.iterator();
-    // while (iter.next()) |ptr| {
-    //     std.debug.print("{}", .{ptr.data});
-    // }
+    // 测试 2: 选择操作符
+    std.debug.print("测试 2: 解析选择操作符\n", .{});
+    {
+        const grammar = "op = { \"+\" | \"-\" | \"*\" }";
+        var parser = PEGParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
 
+        if (parser.rules.get("op")) |_| {
+            std.debug.print("  规则 'op' 解析成功\n", .{});
+            std.debug.print("  规则类型: choice\n\n", .{});
+        }
+    }
+
+    // 测试 3: 序列操作符
+    std.debug.print("测试 3: 解析序列操作符\n", .{});
+    {
+        const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
+        var parser = PEGParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
+
+        if (parser.rules.get("ab")) |_| {
+            std.debug.print("  规则 'ab' 解析成功\n", .{});
+            std.debug.print("  规则类型: sequence\n\n", .{});
+        }
+    }
+
+    // 测试 4: 复杂表达式
+    std.debug.print("测试 4: 解析复杂表达式\n", .{});
+    {
+        const grammar = 
+            \\expression = { term ~ ("+" | "-") ~ term }
+            \\term = { factor ~ ("*" | "/") ~ factor }
+            \\factor = { number | "(" ~ expression ~ ")" }
+            \\number = { ASCII_DIGIT+ }
+        ;
+        
+        var parser = PEGParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
+
+        std.debug.print("  解析了 {d} 个规则:\n", .{parser.rules.count()});
+        var it = parser.rules.iterator();
+        while (it.next()) |entry| {
+            std.debug.print("    - {s}\n", .{entry.key_ptr.*});
+        }
+        std.debug.print("\n", .{});
+    }
+
+    // 测试 5: 后缀操作符
+    std.debug.print("测试 5: 解析后缀操作符\n", .{});
+    {
+        const grammar = 
+            \\opt = { "a"? }
+            \\plus = { "b"+ }
+            \\star = { "c"* }
+        ;
+        
+        var parser = PEGParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
+
+        if (parser.rules.get("opt")) |_| {
+            std.debug.print("  opt: optional\n", .{});
+        }
+        if (parser.rules.get("plus")) |_| {
+            std.debug.print("  plus: repeat (min=1)\n", .{});
+        }
+        if (parser.rules.get("star")) |_| {
+            std.debug.print("  star: repeat (min=0)\n", .{});
+        }
+        std.debug.print("\n", .{});
+    }
+
+    std.debug.print("所有测试完成！\n", .{});
 }
