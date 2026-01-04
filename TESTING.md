@@ -39,7 +39,7 @@ zig test src/main.zig -I src
 
 ```zig
 const grammar = "hello = { \"world\" }";
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 
@@ -52,7 +52,7 @@ const rule = parser.rules.get("hello").?;
 
 ```zig
 const grammar = "op = { \"+\" | \"-\" | \"*\" }";
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 
@@ -64,7 +64,7 @@ const rule = parser.rules.get("op").?;
 
 ```zig
 const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 
@@ -81,7 +81,7 @@ const grammar =
     \\star = { "c"* }
 ;
 
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 
@@ -100,7 +100,7 @@ const grammar =
     \\atomic = { @"a" }
 ;
 
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 ```
@@ -113,7 +113,7 @@ const grammar =
     \\b = { a }
 ;
 
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 
@@ -126,7 +126,7 @@ const rule = parser.rules.get("b").?;
 
 ```zig
 const grammar = "expr = { ( \"a\" | \"b\" ) }";
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 ```
@@ -141,7 +141,7 @@ const grammar =
     \\number = { ASCII_DIGIT+ }
 ;
 
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 ```
@@ -150,7 +150,7 @@ defer parser.deinit();
 
 ```zig
 const std = @import("std");
-const PEGParser = @import("ast.zig").PEGParser;
+const PEZParser = @import("ast.zig").PEZParser;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -159,7 +159,7 @@ pub fn main() !void {
 
     const grammar = "hello = { \"world\" }";
     
-    var parser = PEGParser.init(allocator, grammar);
+    var parser = PEZParser.init(allocator, grammar);
     try parser.parse();
     defer parser.deinit();  // 自动释放所有内存
     

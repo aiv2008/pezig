@@ -139,14 +139,14 @@ pub const Rule = union(enum) {
 #### 实现要点
 
 ```zig
-pub const PEGParser = struct {
+pub const PEZParser = struct {
     input: []const u8,
     position: usize = 0,
     rules: std.StringHashMap(Rule),
     allocator: std.mem.Allocator,
     
     // 解析 PEG 语法定义
-    pub fn parse(self: *PEGParser) !void {
+    pub fn parse(self: *PEZParser) !void {
         // 1. 解析规则定义
         // 2. 识别操作符
         // 3. 构建规则树
@@ -154,29 +154,29 @@ pub const PEGParser = struct {
     }
     
     // 解析单个规则
-    fn parseRule(self: *PEGParser) !Rule {
+    fn parseRule(self: *PEZParser) !Rule {
         // 解析规则名称
         // 解析规则体
         // 处理操作符优先级
     }
     
     // 解析表达式（处理优先级）
-    fn parseExpression(self: *PEGParser) !Rule {
+    fn parseExpression(self: *PEZParser) !Rule {
         // 处理选择运算符 |
     }
     
     // 解析序列（处理 ~ 运算符）
-    fn parseSequence(self: *PEGParser) !Rule {
+    fn parseSequence(self: *PEZParser) !Rule {
         // 处理序列运算符 ~
     }
     
     // 解析前缀操作符
-    fn parsePrefix(self: *PEGParser) !Rule {
+    fn parsePrefix(self: *PEZParser) !Rule {
         // 处理 !, &, _, @
     }
     
     // 解析后缀操作符
-    fn parsePostfix(self: *PEGParser) !Rule {
+    fn parsePostfix(self: *PEZParser) !Rule {
         // 处理 ?, +, *
     }
 };
@@ -590,23 +590,23 @@ fn executeAction(action: SemanticAction, match: MatchResult) !void {
 
 ### 已实现功能（阶段 1.1 部分完成）
 
-#### 1. PEGParser 基础结构
+#### 1. PEZParser 基础结构
 
-已实现 `PEGParser` 结构体，包含：
+已实现 `PEZParser` 结构体，包含：
 - `input: []const u8` - 待解析的 PEG 语法字符串
 - `position: usize` - 当前解析位置
 - `rules: std.StringHashMap(*Rule)` - 存储解析出的规则（使用指针存储，便于内存管理）
 - `allocator: std.mem.Allocator` - 内存分配器
 
 ```zig
-pub const PEGParser = struct {
+pub const PEZParser = struct {
     input: []const u8,
     position: usize,
     rules: std.StringHashMap(*Rule),
     allocator: std.mem.Allocator,
     
-    pub fn init(allocator: std.mem.Allocator, input: []const u8) PEGParser {
-        return PEGParser{
+    pub fn init(allocator: std.mem.Allocator, input: []const u8) PEZParser {
+        return PEZParser{
             .input = input,
             .position = 0,
             .rules = std.StringHashMap(*Rule).init(allocator),
@@ -633,7 +633,7 @@ pub const PEGParser = struct {
 - 返回解析出的标识符字符串切片
 
 ```zig
-pub fn parseIdentifier(self: *PEGParser) !?[]const u8 {
+pub fn parseIdentifier(self: *PEZParser) !?[]const u8 {
     self.skipWhitespace();
     if (self.isAtEnd()) return null;
     
@@ -666,7 +666,7 @@ pub fn parseIdentifier(self: *PEGParser) !?[]const u8 {
 - 包含错误处理（未闭合字符串检测）
 
 ```zig
-pub fn parseString(self: *PEGParser) !?[]const u8 {
+pub fn parseString(self: *PEZParser) !?[]const u8 {
     self.skipWhitespace();
     if (self.isAtEnd()) return null;
     
@@ -703,7 +703,7 @@ pub fn parseString(self: *PEGParser) !?[]const u8 {
 - 目前返回占位规则（规则体解析待实现）
 
 ```zig
-pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *Rule } {
+pub fn parseRuleDefinition(self: *PEZParser) !struct { name: []const u8, rule: *Rule } {
     self.skipWhitespace();
     const ident_opt = try self.parseIdentifier();
     const name = ident_opt orelse return ast_errors.AstError.NotAnAst;
@@ -742,13 +742,13 @@ pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *
   - 处理所有包含指针的 Rule 类型（sequence, choice, optional, repeat 等）
   - 正确处理嵌套结构的释放
 
-- **`deinit()`** - 释放 PEGParser 及其所有规则
+- **`deinit()`** - 释放 PEZParser 及其所有规则
   - 遍历 HashMap 中的所有规则
   - 使用 `freeRule()` 递归释放
   - 释放 HashMap 本身
 
 ```zig
-fn freeRule(self: *PEGParser, rule: *Rule) void {
+fn freeRule(self: *PEZParser, rule: *Rule) void {
     switch (rule.*) {
         .sequence => |seq| {
             self.freeRule(seq.left);
@@ -767,7 +767,7 @@ fn freeRule(self: *PEGParser, rule: *Rule) void {
     }
 }
 
-pub fn deinit(self: *PEGParser) void {
+pub fn deinit(self: *PEZParser) void {
     var it = self.rules.iterator();
     while (it.next()) |entry| {
         self.freeRule(entry.value_ptr.*);
@@ -825,7 +825,7 @@ pub fn deinit(self: *PEGParser) void {
 
 ```zig
 // 完整的解析函数调用链
-fn parseExpression(self: *PEGParser) !*Rule {
+fn parseExpression(self: *PEZParser) !*Rule {
     var left = try self.parseSequence();  // 调用 parseSequence
     
     while (true) {
@@ -841,7 +841,7 @@ fn parseExpression(self: *PEGParser) !*Rule {
     return left;
 }
 
-fn parseSequence(self: *PEGParser) !*Rule {
+fn parseSequence(self: *PEZParser) !*Rule {
     var left = try self.parsePostfix();  // 调用 parsePostfix
     
     while (true) {
@@ -857,7 +857,7 @@ fn parseSequence(self: *PEGParser) !*Rule {
     return left;
 }
 
-fn parsePostfix(self: *PEGParser) !*Rule {
+fn parsePostfix(self: *PEZParser) !*Rule {
     var left = try self.parsePrefix();  // 调用 parsePrefix
     
     while (true) {
@@ -887,7 +887,7 @@ fn parsePostfix(self: *PEGParser) !*Rule {
     return left;
 }
 
-fn parsePrefix(self: *PEGParser) !*Rule {
+fn parsePrefix(self: *PEZParser) !*Rule {
     self.skipWhitespace();
     const ch = self.peek() orelse return ast_errors.AstError.NotAnAst;
     
@@ -909,7 +909,7 @@ fn parsePrefix(self: *PEGParser) !*Rule {
     }
 }
 
-fn parsePrimary(self: *PEGParser) !*Rule {
+fn parsePrimary(self: *PEZParser) !*Rule {
     // 解析字符串字面量、括号表达式、规则引用
     // 使用 allocator.dupe() 复制字符串
 }
@@ -924,7 +924,7 @@ fn parsePrimary(self: *PEGParser) !*Rule {
   - ✅ 返回规则名和规则指针
 
 ```zig
-pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *Rule } {
+pub fn parseRuleDefinition(self: *PEZParser) !struct { name: []const u8, rule: *Rule } {
     const name_slice = try self.parseIdentifier();
     const name = try self.allocator.dupe(u8, name_slice);  // 复制规则名
     
@@ -948,7 +948,7 @@ pub fn parseRuleDefinition(self: *PEGParser) !struct { name: []const u8, rule: *
   - ✅ 处理空白字符和规则分隔
 
 ```zig
-pub fn parse(self: *PEGParser) !void {
+pub fn parse(self: *PEZParser) !void {
     while (!self.isAtEnd()) {
         self.skipWhitespace();
         if (self.isAtEnd()) break;
@@ -969,7 +969,7 @@ pub fn parse(self: *PEGParser) !void {
   - ✅ 释放 HashMap 本身
 
 ```zig
-pub fn deinit(self: *PEGParser) void {
+pub fn deinit(self: *PEZParser) void {
     var it = self.rules.iterator();
     while (it.next()) |entry| {
         self.allocator.free(entry.key_ptr.*);  // 释放规则名
@@ -1004,7 +1004,7 @@ const grammar =
     \\number = { ASCII_DIGIT+ }
 ;
 
-var parser = PEGParser.init(allocator, grammar);
+var parser = PEZParser.init(allocator, grammar);
 try parser.parse();
 defer parser.deinit();
 

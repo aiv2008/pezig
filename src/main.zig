@@ -1,5 +1,5 @@
 const std = @import("std");
-const PEGParser = @import("parser.zig").PEGParser;
+const PEZParser = @import("parser.zig").PEZParser;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,7 +12,7 @@ pub fn main() !void {
     std.debug.print("测试 1: 解析简单规则\n", .{});
     {
         const grammar = "hello = { \"world\" }";
-        var parser = PEGParser.init(allocator, grammar);
+        var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
         defer parser.deinit();
 
@@ -27,7 +27,7 @@ pub fn main() !void {
     std.debug.print("测试 2: 解析选择操作符\n", .{});
     {
         const grammar = "op = { \"+\" | \"-\" | \"*\" }";
-        var parser = PEGParser.init(allocator, grammar);
+        var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
         defer parser.deinit();
 
@@ -41,7 +41,7 @@ pub fn main() !void {
     std.debug.print("测试 3: 解析序列操作符\n", .{});
     {
         const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
-        var parser = PEGParser.init(allocator, grammar);
+        var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
         defer parser.deinit();
 
@@ -54,14 +54,14 @@ pub fn main() !void {
     // 测试 4: 复杂表达式
     std.debug.print("测试 4: 解析复杂表达式\n", .{});
     {
-        const grammar = 
+        const grammar =
             \\expression = { term ~ ("+" | "-") ~ term }
             \\term = { factor ~ ("*" | "/") ~ factor }
             \\factor = { number | "(" ~ expression ~ ")" }
             \\number = { ASCII_DIGIT+ }
         ;
-        
-        var parser = PEGParser.init(allocator, grammar);
+
+        var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
         defer parser.deinit();
 
@@ -76,13 +76,13 @@ pub fn main() !void {
     // 测试 5: 后缀操作符
     std.debug.print("测试 5: 解析后缀操作符\n", .{});
     {
-        const grammar = 
+        const grammar =
             \\opt = { "a"? }
             \\plus = { "b"+ }
             \\star = { "c"* }
         ;
-        
-        var parser = PEGParser.init(allocator, grammar);
+
+        var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
         defer parser.deinit();
 

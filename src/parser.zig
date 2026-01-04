@@ -3,15 +3,15 @@ const Rule = @import("ast.zig").Rule;
 const ast_errors = @import("errors.zig");
 const MatchResult = @import("ast.zig").MatchResult;
 
-//PEGParser中的input不是要翻译的字符串，而是规则字符串；
-// 譬如 `a = {"b" ~ "c"}`整个规则字符串就是PEGParser的输入input
-pub const PEGParser = struct {
+//PEZParser中的input不是要翻译的字符串，而是规则字符串；
+// 譬如 `a = {"b" ~ "c"}`整个规则字符串就是PEZParser的输入input
+pub const PEZParser = struct {
     input: []const u8,
     position: usize,
     rules: std.StringHashMap(*Rule),
     allocator: std.mem.Allocator,
-    pub fn init(allocator: std.mem.Allocator, input: []const u8) PEGParser {
-        return PEGParser{
+    pub fn init(allocator: std.mem.Allocator, input: []const u8) PEZParser {
+        return PEZParser{
             .input = input,
             .position = 0,
             .rules = std.StringHashMap(*Rule).init(allocator),
@@ -23,22 +23,22 @@ pub const PEGParser = struct {
     // 语法格式示例：
     //   rule1 = { "a" ~ "b" }
     //   rule2 = { "c" | "d" }
-    pub fn parse(self: *PEGParser) !void {
+    pub fn parse(self: *PEZParser) !void {
         // 循环解析规则定义，直到输入结束
         while (!self.isAtEnd()) {
             self.skipWhitespace();
-            
+
             // 如果遇到空行或注释，跳过
             if (self.isAtEnd()) {
                 break;
             }
-            
+
             // 解析一个规则定义
             const rule_def = try self.parseRuleDefinition();
-            
+
             // 将规则存储到 HashMap 中
             try self.rules.put(rule_def.name, rule_def.rule);
-            
+
             // 跳过规则定义后的空白字符
             self.skipWhitespace();
         }
@@ -46,19 +46,19 @@ pub const PEGParser = struct {
 
     // 第二步：实现辅助函数（跳过空白、读取字符等）
     // 1. 跳过空白字符（空格、\t、\n、\r）
-    fn skipWhitespace(self: *PEGParser) void {
+    fn skipWhitespace(self: *PEZParser) void {
         while (!self.isAtEnd() and std.ascii.isWhitespace(self.input[self.position])) {
             self.position += 1;
         }
     }
 
     // 2. 检查是否到达输入末尾
-    fn isAtEnd(self: *const PEGParser) bool {
+    fn isAtEnd(self: *const PEZParser) bool {
         return self.position >= self.input.len;
     }
 
     // 3. 获取当前字符（不移动位置）
-    fn peek(self: *const PEGParser) ?u8 {
+    fn peek(self: *const PEZParser) ?u8 {
         if (self.position < self.input.len) {
             return self.input[self.position];
         }
@@ -67,7 +67,7 @@ pub const PEGParser = struct {
 
     // 解析标识符（规则名）
     // 4. 读取当前字符并移动位置
-    fn advance(self: *PEGParser) ?u8 {
+    fn advance(self: *PEZParser) ?u8 {
         if (self.position < self.input.len) {
             const pos = self.position;
             self.position += 1;
@@ -78,7 +78,7 @@ pub const PEGParser = struct {
 
     // 第三步：解析标识符（规则名），例如 "expression", "term123"
     // 返回值：解析出的标识符字符串，或 null（如果没有找到）
-    pub fn parseIdentifier(self: *PEGParser) !?[]const u8 {
+    pub fn parseIdentifier(self: *PEZParser) !?[]const u8 {
         // 1. 先跳过空白字符
         self.skipWhitespace();
 
@@ -110,7 +110,7 @@ pub const PEGParser = struct {
 
     // 第四步：解析字面量字符串，例如: "hello", "+", "-"
     // 支持双引号包围的字符串
-    pub fn parseString(self: *PEGParser) !?[]const u8 {
+    pub fn parseString(self: *PEZParser) !?[]const u8 {
         // 1. 跳过空白字符
         self.skipWhitespace();
 
@@ -169,12 +169,12 @@ pub const PEGParser = struct {
     // 任务：实现 parseRuleDefinition 函数
     // 解析完整的规则定义，例如: expression = { term ~ ("+" | "-") ~ term }
     // 返回值：规则名和规则体的元组，或错误
-    pub fn parseRuleDefinition(self: *PEGParser) ast_errors.ParserError!struct { name: []const u8, rule: *Rule } {
+    pub fn parseRuleDefinition(self: *PEZParser) ast_errors.ParserError!struct { name: []const u8, rule: *Rule } {
         // 1. 解析规则名（使用 parseIdentifier）
         self.skipWhitespace();
         const ident_opt = try self.parseIdentifier();
         const name_slice = ident_opt orelse return ast_errors.AstError.NotAnAst;
-        
+
         // 复制规则名（因为 name_slice 只是指向原始输入的切片）
         const name = try self.allocator.dupe(u8, name_slice);
 
@@ -214,7 +214,7 @@ pub const PEGParser = struct {
     // - 字符串字面量（如 "hello"）
     // - 规则引用（如 expression）
     // - 括号表达式（如 ( ... )）
-    fn parsePrimary(self: *PEGParser) ast_errors.ParserError!*Rule {
+    fn parsePrimary(self: *PEZParser) ast_errors.ParserError!*Rule {
         // 1. 跳过空白
         self.skipWhitespace();
 
@@ -264,7 +264,7 @@ pub const PEGParser = struct {
     // 循环检查是否有 |
     // 如果有，解析下一个序列，构建 choice 规则
     // 返回最终的规则
-    fn parseExpression(self: *PEGParser) ast_errors.ParserError!*Rule {
+    fn parseExpression(self: *PEZParser) ast_errors.ParserError!*Rule {
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
         var left = try self.parseSequence();
 
@@ -293,7 +293,7 @@ pub const PEGParser = struct {
     }
 
     // parseSequence 处理序列运算符 ~（或隐式序列）。
-    fn parseSequence(self: *PEGParser) ast_errors.ParserError!*Rule {
+    fn parseSequence(self: *PEZParser) ast_errors.ParserError!*Rule {
         // 实现
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
         var left = try self.parsePostfix();
@@ -328,7 +328,7 @@ pub const PEGParser = struct {
     // "a"+ → 一次或多次：repeat("a", min=1)
     // "a"* → 零次或多次：repeat("a", min=0)
     // "a"?+ → 多重后缀：先 ? 后 +
-    fn parsePostfix(self: *PEGParser) ast_errors.ParserError!*Rule {
+    fn parsePostfix(self: *PEZParser) ast_errors.ParserError!*Rule {
         var left = try self.parsePrefix();
         while (true) {
             self.skipWhitespace();
@@ -374,12 +374,12 @@ pub const PEGParser = struct {
 
     // 解析前缀操作符：!, &, _, @
     // 前缀操作符是右结合的，例如 !!a 会被解析为 !(!a)
-    fn parsePrefix(self: *PEGParser) ast_errors.ParserError!*Rule {
+    fn parsePrefix(self: *PEZParser) ast_errors.ParserError!*Rule {
         self.skipWhitespace();
-        
+
         // 检查是否有前缀操作符
         const ch = self.peek() orelse return ast_errors.AstError.NotAnAst;
-        
+
         switch (ch) {
             '!' => {
                 _ = self.advance(); // 跳过 '!'
@@ -417,7 +417,7 @@ pub const PEGParser = struct {
     }
 
     // 释放单个 Rule 及其所有嵌套的规则
-    fn freeRule(self: *PEGParser, rule: *Rule) void {
+    fn freeRule(self: *PEZParser, rule: *Rule) void {
         switch (rule.*) {
             // 对于包含指针的 Rule，需要递归释放
             .sequence => |seq| {
@@ -480,14 +480,14 @@ pub const PEGParser = struct {
         }
     }
 
-    // 释放 PEGParser 及其所有规则
-    pub fn deinit(self: *PEGParser) void {
+    // 释放 PEZParser 及其所有规则
+    pub fn deinit(self: *PEZParser) void {
         // 释放所有规则和规则名
         var it = self.rules.iterator();
         while (it.next()) |entry| {
             // 释放规则名（HashMap 的 key，通过 allocator.dupe 分配）
             self.allocator.free(entry.key_ptr.*);
-            
+
             // entry.value_ptr.* 获取 HashMap 中存储的 *Rule
             // 然后递归释放规则及其所有嵌套规则
             self.freeRule(entry.value_ptr.*);
@@ -500,12 +500,12 @@ pub const RuntimeParser = struct {
     // 你需要定义哪些字段？
     // 1. rules - 存储规则的 HashMap
     // 2. allocator - 内存分配器
-    
+
     // // 初始化函数
-    // pub fn init(allocator: std.mem.Allocator, parser: *PEGParser) RuntimeParser {
+    // pub fn init(allocator: std.mem.Allocator, parser: *PEZParser) RuntimeParser {
     //     // TODO: 如何初始化？
     // }
-    
+
     // // 主匹配方法：根据规则名匹配输入字符串
     // pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
     //     // TODO: 如何匹配？
