@@ -1,6 +1,6 @@
 const std = @import("std");
 const Rule = @import("ast.zig").Rule;
-const ast_errors = @import("errors.zig");
+const parser_errors = @import("errors.zig");
 const MatchResult = @import("ast.zig").MatchResult;
 
 //PEZParser中的input不是要翻译的字符串，而是规则字符串；
@@ -137,7 +137,7 @@ pub const PEZParser = struct {
         // 6. 检查是否找到了结束引号
         if (self.isAtEnd()) {
             // 字符串没有闭合，返回错误（或者可以返回null，取决于设计）
-            return ast_errors.AstError.Unterminated;
+            return parser_errors.AstError.Unterminated;
         }
 
         // 7. 记录结束位置（遇到结束引号的位置）
@@ -169,11 +169,11 @@ pub const PEZParser = struct {
     // 任务：实现 parseRuleDefinition 函数
     // 解析完整的规则定义，例如: expression = { term ~ ("+" | "-") ~ term }
     // 返回值：规则名和规则体的元组，或错误
-    pub fn parseRuleDefinition(self: *PEZParser) ast_errors.ParserError!struct { name: []const u8, rule: *Rule } {
+    pub fn parseRuleDefinition(self: *PEZParser) parser_errors.ParserError!struct { name: []const u8, rule: *Rule } {
         // 1. 解析规则名（使用 parseIdentifier）
         self.skipWhitespace();
         const ident_opt = try self.parseIdentifier();
-        const name_slice = ident_opt orelse return ast_errors.AstError.NotAnAst;
+        const name_slice = ident_opt orelse return parser_errors.AstError.NotAnAst;
 
         // 复制规则名（因为 name_slice 只是指向原始输入的切片）
         const name = try self.allocator.dupe(u8, name_slice);
@@ -181,14 +181,14 @@ pub const PEZParser = struct {
         // 2. 跳过空白，检查并跳过 '='
         self.skipWhitespace();
         if (self.peek() != '=') {
-            return ast_errors.AstError.NotAnAst;
+            return parser_errors.AstError.NotAnAst;
         }
         _ = self.advance(); // 跳过 '='
 
         // 3. 跳过空白，检查并跳过 '{'
         self.skipWhitespace();
         if (self.peek() != '{') {
-            return ast_errors.AstError.NotAnAst;
+            return parser_errors.AstError.NotAnAst;
         }
         _ = self.advance(); // 跳过 '{'
 
@@ -198,7 +198,7 @@ pub const PEZParser = struct {
         // 5. 跳过空白，查找并跳过 '}'
         self.skipWhitespace();
         if (self.peek() != '}') {
-            return ast_errors.AstError.NotAnAst;
+            return parser_errors.AstError.NotAnAst;
         }
         _ = self.advance(); // 跳过 '}'
 
@@ -214,7 +214,7 @@ pub const PEZParser = struct {
     // - 字符串字面量（如 "hello"）
     // - 规则引用（如 expression）
     // - 括号表达式（如 ( ... )）
-    fn parsePrimary(self: *PEZParser) ast_errors.ParserError!*Rule {
+    fn parsePrimary(self: *PEZParser) parser_errors.ParserError!*Rule {
         // 1. 跳过空白
         self.skipWhitespace();
 
@@ -224,7 +224,7 @@ pub const PEZParser = struct {
             if (ch == '"') {
                 // 调用 parseString，创建 literal 规则
                 const str_opt = try self.parseString();
-                const str = str_opt orelse return ast_errors.AstError.Unterminated;
+                const str = str_opt orelse return parser_errors.AstError.Unterminated;
                 const str_copy = try self.allocator.dupe(u8, str);
                 const rule_ptr = try self.allocator.create(Rule);
                 rule_ptr.* = Rule{ .literal = str_copy };
@@ -239,7 +239,7 @@ pub const PEZParser = struct {
                 // 跳过 ')'
                 self.skipWhitespace();
                 if (self.peek() != ')') {
-                    return ast_errors.AstError.ExpectedClosingParen;
+                    return parser_errors.AstError.ExpectedClosingParen;
                 }
                 _ = self.advance();
                 return rule_ptr;
@@ -256,7 +256,7 @@ pub const PEZParser = struct {
         }
 
         // 5. 如果都不是，返回错误
-        return ast_errors.AstError.NotAnAst;
+        return parser_errors.AstError.NotAnAst;
     }
 
     // 思路：
@@ -264,7 +264,7 @@ pub const PEZParser = struct {
     // 循环检查是否有 |
     // 如果有，解析下一个序列，构建 choice 规则
     // 返回最终的规则
-    fn parseExpression(self: *PEZParser) ast_errors.ParserError!*Rule {
+    fn parseExpression(self: *PEZParser) parser_errors.ParserError!*Rule {
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
         var left = try self.parseSequence();
 
@@ -293,7 +293,7 @@ pub const PEZParser = struct {
     }
 
     // parseSequence 处理序列运算符 ~（或隐式序列）。
-    fn parseSequence(self: *PEZParser) ast_errors.ParserError!*Rule {
+    fn parseSequence(self: *PEZParser) parser_errors.ParserError!*Rule {
         // 实现
         // 1. 先解析一个序列（暂时先调用 parsePrimary）
         var left = try self.parsePostfix();
@@ -328,7 +328,7 @@ pub const PEZParser = struct {
     // "a"+ → 一次或多次：repeat("a", min=1)
     // "a"* → 零次或多次：repeat("a", min=0)
     // "a"?+ → 多重后缀：先 ? 后 +
-    fn parsePostfix(self: *PEZParser) ast_errors.ParserError!*Rule {
+    fn parsePostfix(self: *PEZParser) parser_errors.ParserError!*Rule {
         var left = try self.parsePrefix();
         while (true) {
             self.skipWhitespace();
@@ -374,11 +374,11 @@ pub const PEZParser = struct {
 
     // 解析前缀操作符：!, &, _, @
     // 前缀操作符是右结合的，例如 !!a 会被解析为 !(!a)
-    fn parsePrefix(self: *PEZParser) ast_errors.ParserError!*Rule {
+    fn parsePrefix(self: *PEZParser) parser_errors.ParserError!*Rule {
         self.skipWhitespace();
 
         // 检查是否有前缀操作符
-        const ch = self.peek() orelse return ast_errors.AstError.NotAnAst;
+        const ch = self.peek() orelse return parser_errors.AstError.NotAnAst;
 
         switch (ch) {
             '!' => {
@@ -500,14 +500,32 @@ pub const RuntimeParser = struct {
     // 你需要定义哪些字段？
     // 1. rules - 存储规则的 HashMap
     // 2. allocator - 内存分配器
-
+    rules: std.StringHashMap(*Rule),
+    allocator: std.mem.Allocator,
     // // 初始化函数
-    // pub fn init(allocator: std.mem.Allocator, parser: *PEZParser) RuntimeParser {
-    //     // TODO: 如何初始化？
-    // }
+    pub fn init(allocator: std.mem.Allocator, rules: std.StringHashMap(*Rule)) RuntimeParser {
+        // TODO: 如何初始化？
+        return RuntimeParser{
+            .allocator = allocator,
+            .rules = rules,
+        };
+    }
 
     // // 主匹配方法：根据规则名匹配输入字符串
     // pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
     //     // TODO: 如何匹配？
+    // }
+
+    // fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+    //     if (pos + literal.len >= input.len) {
+    //         return parser_errors.RuntimeError.OutOfBound;
+    //     }
+    //     if(std.mem.startsWith([]u8, input[pos..], literal){
+    //         const _pos = pos;
+    //         return MatchResult{
+    //             .success = true,
+    //             .matched_text =
+    //         }
+    //     }
     // }
 };
