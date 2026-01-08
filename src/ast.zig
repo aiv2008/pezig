@@ -57,15 +57,15 @@ pub const Rule = union(enum) {
         switch (self.*) {
             .literal => |value| {
                 std.debug.print("literal: ", .{});
-                std.debug.print("{s}", .{value});
+                std.debug.print("{s}\n", .{value});
             },
             .regex => |value| {
                 std.debug.print("regex: ", .{});
-                std.debug.print("{s}", .{value});
+                std.debug.print("{s}\n", .{value});
             },
             .rule_ref => |value| {
                 std.debug.print("rule_ref: ", .{});
-                std.debug.print("{s}", .{value});
+                std.debug.print("{s}\n", .{value});
             },
             .sequence => |value| {
                 std.debug.print("sequence: ", .{});
@@ -90,11 +90,11 @@ pub const Rule = union(enum) {
                 std.debug.print("value: ", .{});
                 value.rule.*.parse();
                 if (value.max) |max_val| {
-                    std.debug.print("max: {d}", .{max_val});
+                    std.debug.print("max: {d}\n", .{max_val});
                 } else {
-                    std.debug.print("max: null", .{});
+                    std.debug.print("max: null\n", .{});
                 }
-                std.debug.print("min: {d}", .{value.min});
+                std.debug.print("min: {d}\n", .{value.min});
             },
 
             // // 否定前瞻：!A（不匹配 A）
