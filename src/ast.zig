@@ -53,6 +53,82 @@ pub const Rule = union(enum) {
         rules: []Rule,
         levels: []PrecedenceLevel,
     },
+    pub fn parse(self: *Rule) void {
+        switch (self.*) {
+            .literal => |value| {
+                std.debug.print("literal: ", .{});
+                std.debug.print("{s}", .{value});
+            },
+            .regex => |value| {
+                std.debug.print("regex: ", .{});
+                std.debug.print("{s}", .{value});
+            },
+            .rule_ref => |value| {
+                std.debug.print("rule_ref: ", .{});
+                std.debug.print("{s}", .{value});
+            },
+            .sequence => |value| {
+                std.debug.print("sequence: ", .{});
+                std.debug.print("left: ", .{});
+                value.left.*.parse();
+                std.debug.print("right", .{});
+                value.right.*.parse();
+            },
+            .choice => |value| {
+                std.debug.print("choice: ", .{});
+                std.debug.print("left: ", .{});
+                value.left.*.parse();
+                std.debug.print("right", .{});
+                value.right.*.parse();
+            },
+            .optional => |value| {
+                std.debug.print("optional: ", .{});
+                value.*.parse();
+            },
+            .repeat => |value| {
+                std.debug.print("repeat: ", .{});
+                std.debug.print("value: ", .{});
+                value.rule.*.parse();
+                if (value.max) |max_val| {
+                    std.debug.print("max: {d}", .{max_val});
+                } else {
+                    std.debug.print("max: null", .{});
+                }
+                std.debug.print("min: {d}", .{value.min});
+            },
+
+            // // 否定前瞻：!A（不匹配 A）
+            //     not_predicate: *Rule,
+            .not_predicate => |value| {
+                std.debug.print("not_predicate: ", .{});
+                value.*.parse();
+            },
+            //     // 肯定前瞻：&A（匹配 A 但不消耗）
+            //     and_predicate: *Rule,
+            .and_predicate => |value| {
+                std.debug.print("and_predicate: ", .{});
+                value.*.parse();
+            },
+            //     // 静默：_A（匹配但不捕获）
+            //     silent: *Rule,
+            .silent => |value| {
+                std.debug.print("silent: ", .{});
+                value.*.parse();
+            },
+            //     // 原子：@A（禁用回溯）
+            //     atomic: *Rule,
+            .atomic => |value| {
+                std.debug.print("atomic: ", .{});
+                value.*.parse();
+            },
+            //     // 优先级组
+            //     precedence: struct {
+            //         rules: []Rule,
+            //         levels: []PrecedenceLevel,
+            //     },
+            .precedence => {},
+        }
+    }
 };
 
 /// 2. 规则对象（Rule AST）
@@ -81,4 +157,3 @@ pub const MatchResult = struct {
         };
     }
 };
-
