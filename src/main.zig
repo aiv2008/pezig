@@ -52,27 +52,30 @@ pub fn main() !void {
     //     }
     // }
 
-    // // 测试 4: 复杂表达式
-    // std.debug.print("测试 4: 解析复杂表达式\n", .{});
-    // {
-    //     const grammar =
-    //         \\expression = { term ~ ("+" | "-") ~ term }
-    //         \\term = { factor ~ ("*" | "/") ~ factor }
-    //         \\factor = { number | "(" ~ expression ~ ")" }
-    //         \\number = { ASCII_DIGIT+ }
-    //     ;
+    // 测试 4: 复杂表达式
+    std.debug.print("测试 4: 解析复杂表达式\n", .{});
+    {
+        const grammar =
+            \\expression = { term ~ ("+" | "-") ~ term }
+            \\term = { factor ~ ("*" | "/") ~ factor }
+            \\factor = { number | "(" ~ expression ~ ")" }
+            \\number = { ASCII_DIGIT+ }
+        ;
 
-    //     var parser = PEZParser.init(allocator, grammar);
-    //     try parser.parse();
-    //     defer parser.deinit();
+        var parser = PEZParser.init(allocator, grammar);
+        try parser.parse();
+        defer parser.deinit();
 
-    //     std.debug.print("  解析了 {d} 个规则:\n", .{parser.rules.count()});
-    //     var it = parser.rules.iterator();
-    //     while (it.next()) |entry| {
-    //         std.debug.print("    - {s}\n", .{entry.key_ptr.*});
-    //     }
-    //     std.debug.print("\n", .{});
-    // }
+        std.debug.print("  解析了 {d} 个规则:\n", .{parser.rules.count()});
+        var it = parser.rules.iterator();
+        while (it.next()) |entry| {
+            std.debug.print("   key - {s}\n", .{entry.key_ptr.*});
+            const value = entry.value_ptr.*;
+            std.debug.print("value: \n", .{});
+            value.*.parse();
+        }
+        std.debug.print("\n", .{});
+    }
 
     // // 测试 5: 后缀操作符
     // std.debug.print("测试 5: 解析后缀操作符\n", .{});
@@ -99,23 +102,23 @@ pub fn main() !void {
     //     std.debug.print("\n", .{});
     // }
 
-    // 测试 6: 复杂操作
-    std.debug.print("测试 6: 复杂操作\n", .{});
-    {
-        const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
+    // // 测试 6: 复杂操作
+    // std.debug.print("测试 6: 复杂操作\n", .{});
+    // {
+    //     const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
 
-        var parser = PEZParser.init(allocator, grammar);
-        try parser.parse();
-        defer parser.deinit();
+    //     var parser = PEZParser.init(allocator, grammar);
+    //     try parser.parse();
+    //     defer parser.deinit();
 
-        std.debug.print("  解析了 {d} 个规则:\n", .{parser.rules.count()});
-        var it = parser.rules.iterator();
-        while (it.next()) |entry| {
-            std.debug.print("{s}\n", .{entry.key_ptr.*});
-            entry.value_ptr.*.parse();
-        }
-        // std.debug.print("\n", .{});
-    }
+    //     std.debug.print("  解析了 {d} 个规则:\n", .{parser.rules.count()});
+    //     var it = parser.rules.iterator();
+    //     while (it.next()) |entry| {
+    //         std.debug.print("{s}\n", .{entry.key_ptr.*});
+    //         entry.value_ptr.*.parse();
+    //     }
+    //     // std.debug.print("\n", .{});
+    // }
 
     std.debug.print("所有测试完成！\n", .{});
 }

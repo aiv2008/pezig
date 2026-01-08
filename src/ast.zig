@@ -56,38 +56,38 @@ pub const Rule = union(enum) {
     pub fn parse(self: *Rule) void {
         switch (self.*) {
             .literal => |value| {
-                std.debug.print("literal: ", .{});
+                std.debug.print("literal: \n", .{});
                 std.debug.print("{s}\n", .{value});
             },
             .regex => |value| {
-                std.debug.print("regex: ", .{});
+                std.debug.print("regex: \n", .{});
                 std.debug.print("{s}\n", .{value});
             },
             .rule_ref => |value| {
-                std.debug.print("rule_ref: ", .{});
+                std.debug.print("rule_ref: \n", .{});
                 std.debug.print("{s}\n", .{value});
             },
             .sequence => |value| {
-                std.debug.print("sequence: ", .{});
-                std.debug.print("left: ", .{});
+                std.debug.print("sequence: \n", .{});
+                std.debug.print("left: \n", .{});
                 value.left.*.parse();
-                std.debug.print("right", .{});
+                std.debug.print("right: \n", .{});
                 value.right.*.parse();
             },
             .choice => |value| {
-                std.debug.print("choice: ", .{});
-                std.debug.print("left: ", .{});
+                std.debug.print("choice: \n", .{});
+                std.debug.print("left: \n", .{});
                 value.left.*.parse();
-                std.debug.print("right", .{});
+                std.debug.print("right: \n", .{});
                 value.right.*.parse();
             },
             .optional => |value| {
-                std.debug.print("optional: ", .{});
+                std.debug.print("optional: \n", .{});
                 value.*.parse();
             },
             .repeat => |value| {
-                std.debug.print("repeat: ", .{});
-                std.debug.print("value: ", .{});
+                std.debug.print("repeat: \n", .{});
+                std.debug.print("value: \n", .{});
                 value.rule.*.parse();
                 if (value.max) |max_val| {
                     std.debug.print("max: {d}\n", .{max_val});
@@ -100,25 +100,25 @@ pub const Rule = union(enum) {
             // // 否定前瞻：!A（不匹配 A）
             //     not_predicate: *Rule,
             .not_predicate => |value| {
-                std.debug.print("not_predicate: ", .{});
+                std.debug.print("not_predicate: \n", .{});
                 value.*.parse();
             },
             //     // 肯定前瞻：&A（匹配 A 但不消耗）
             //     and_predicate: *Rule,
             .and_predicate => |value| {
-                std.debug.print("and_predicate: ", .{});
+                std.debug.print("and_predicate: \n", .{});
                 value.*.parse();
             },
             //     // 静默：_A（匹配但不捕获）
             //     silent: *Rule,
             .silent => |value| {
-                std.debug.print("silent: ", .{});
+                std.debug.print("silent: \n", .{});
                 value.*.parse();
             },
             //     // 原子：@A（禁用回溯）
             //     atomic: *Rule,
             .atomic => |value| {
-                std.debug.print("atomic: ", .{});
+                std.debug.print("atomic: \n", .{});
                 value.*.parse();
             },
             //     // 优先级组
