@@ -511,6 +511,28 @@ pub const RuntimeParser = struct {
         };
     }
 
+    fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult{
+        //todo
+        switch (rule.*) {
+            .literal => {
+                // 处理字面量匹配
+            },
+            .rule_ref => {
+                // 处理规则引用
+            },
+            .sequence => {
+                // 处理序列（A ~ B）
+            },
+            .choice => {
+                // 处理选择（A | B）
+            },
+            // ... 其他类型
+            else => {
+                // 暂未实现
+            },
+        }
+    }
+
     // // 主匹配方法：根据规则名匹配输入字符串
     // pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
     //     // TODO: 如何匹配？
