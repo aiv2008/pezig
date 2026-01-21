@@ -511,7 +511,7 @@ pub const RuntimeParser = struct {
         };
     }
 
-    fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
+    pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
         return switch (rule.*) {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
             // .rule_ref => {
@@ -536,7 +536,7 @@ pub const RuntimeParser = struct {
     // 主匹配方法：根据规则名匹配输入字符串
     pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) parser_errors.RuntimeError!*MatchResult {
         return if (self.rules.get(rule_name)) |r| {
-            try self.matchResult(self, r, input, 0);
+            try self.matchResult( r, input, 0);
         } else {
             parser_errors.RuntimeError.RuleNotFound;
         };
