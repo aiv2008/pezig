@@ -511,43 +511,54 @@ pub const RuntimeParser = struct {
         };
     }
 
-    fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult{
-        //todo
-        switch (rule.*) {
-            .literal => {
-                // 处理字面量匹配
-            },
-            .rule_ref => {
-                // 处理规则引用
-            },
-            .sequence => {
-                // 处理序列（A ~ B）
-            },
-            .choice => {
-                // 处理选择（A | B）
-            },
+    fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
+        return switch (rule.*) {
+            .literal => |lit| try self.matchLiteral(lit, input, pos),
+            // .rule_ref => {
+            //     // 处理规则引用
+            // },
+            // .sequence => {
+            //     // 处理序列（A ~ B）
+            // },
+            // .choice => {
+            //     // 处理选择（A | B）
+            // },
             // ... 其他类型
             else => {
-                // 暂未实现
+                // 暂未实现的规则类型：返回失败结果，便于上层回溯
+                const result = try self.allocator.create(MatchResult);
+                result.* = MatchResult.matchFailInit(self.allocator, pos);
+                return result;
             },
-        }
+        };
     }
 
-    // // 主匹配方法：根据规则名匹配输入字符串
-    // pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
-    //     // TODO: 如何匹配？
-    // }
+    // 主匹配方法：根据规则名匹配输入字符串
+    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) parser_errors.RuntimeError!*MatchResult {
+        return if (self.rules.get(rule_name)) |r| {
+            try self.matchResult(self, r, input, 0);
+        } else {
+            parser_errors.RuntimeError.RuleNotFound;
+        };
+    }
 
-    // fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
-    //     if (pos + literal.len >= input.len) {
-    //         return parser_errors.RuntimeError.OutOfBound;
-    //     }
-    //     if(std.mem.startsWith([]u8, input[pos..], literal){
-    //         const _pos = pos;
-    //         return MatchResult{
-    //             .success = true,
-    //             .matched_text =
-    //         }
-    //     }
-    // }
+    fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) !*MatchResult {
+        // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
+        if (pos + literal.len > input.len) {
+            const result = try self.allocator.create(MatchResult);
+            result.* = MatchResult.matchFailInit(self.allocator, pos);
+            return result;
+        }
+        if (std.mem.startsWith(u8, input[pos..], literal)) {
+            const matched_text = input[pos .. pos + literal.len];
+            const mr = try MatchResult.init(self.allocator, pos, pos + literal.len, matched_text);
+            const result = try self.allocator.create(MatchResult);
+            result.* = mr;
+            return result;
+        } else {
+            const result = try self.allocator.create(MatchResult);
+            result.* = MatchResult.matchFailInit(self.allocator, pos);
+            return result;
+        }
+    }
 };

@@ -8,6 +8,7 @@ pub const AstError = error{
 
 pub const RuntimeError = error{
     OutOfBound,
+    RuleNotFound,
 };
 
 // 统一的解析器错误类型，包含所有可能的错误

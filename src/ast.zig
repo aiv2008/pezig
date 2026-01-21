@@ -153,7 +153,18 @@ pub const MatchResult = struct {
             .end_position = end,
             .matched_text = text,
             .success = true,
-            .children = std.ArrayList(*MatchResult).init(allocator),
+            .children = std.ArrayList(*MatchResult).initCapacity(allocator, 200),
+        };
+    }
+    //匹配异常重新初始化
+    pub fn matchFailInit(allocator: std.mem.Allocator, pos: usize) MatchResult {
+        return MatchResult{
+            .success = false,
+            .start_position = pos,
+            .end_position = pos,
+            .matched_text = "",
+            .children = std.ArrayList(*MatchResult).initCapacity(allocator, 200),
+            .allocator = allocator,
         };
     }
 };
