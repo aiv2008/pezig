@@ -153,18 +153,30 @@ pub const MatchResult = struct {
             .end_position = end,
             .matched_text = text,
             .success = true,
-            .children = std.ArrayList(*MatchResult).initCapacity(allocator, 200),
+            .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
         };
     }
     //匹配异常重新初始化
-    pub fn matchFailInit(allocator: std.mem.Allocator, pos: usize) MatchResult {
+    pub fn matchFailInit(allocator: std.mem.Allocator, pos: usize) !MatchResult {
         return MatchResult{
             .success = false,
             .start_position = pos,
             .end_position = pos,
             .matched_text = "",
-            .children = std.ArrayList(*MatchResult).initCapacity(allocator, 200),
+            .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
             .allocator = allocator,
         };
+    }
+
+    // 释放 MatchResult 及其所有子节点
+    // 注意：如果 matched_text 是通过 dupe 分配的，需要在这里释放
+    // 当前实现中 matched_text 指向原始 input，所以不需要释放
+    pub fn deinit(self: *MatchResult) void {
+        // 递归释放所有子节点
+        for (self.children.items) |child| {
+            child.deinit();
+            self.allocator.destroy(child);
+        }
+        self.children.deinit(self.allocator);
     }
 };

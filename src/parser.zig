@@ -527,26 +527,26 @@ pub const RuntimeParser = struct {
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
-                result.* = MatchResult.matchFailInit(self.allocator, pos);
+                result.* = try MatchResult.matchFailInit(self.allocator, pos);
                 return result;
             },
         };
     }
 
     // 主匹配方法：根据规则名匹配输入字符串
-    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) parser_errors.RuntimeError!*MatchResult {
-        return if (self.rules.get(rule_name)) |r| {
-            try self.matchResult( r, input, 0);
+    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
+        if (self.rules.get(rule_name)) |r| {
+            return try self.matchResult(r, input, 0);
         } else {
-            parser_errors.RuntimeError.RuleNotFound;
-        };
+            return error.RuleNotFound;
+        }
     }
 
     fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) !*MatchResult {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
             const result = try self.allocator.create(MatchResult);
-            result.* = MatchResult.matchFailInit(self.allocator, pos);
+            result.* = try MatchResult.matchFailInit(self.allocator, pos);
             return result;
         }
         if (std.mem.startsWith(u8, input[pos..], literal)) {
@@ -557,8 +557,20 @@ pub const RuntimeParser = struct {
             return result;
         } else {
             const result = try self.allocator.create(MatchResult);
-            result.* = MatchResult.matchFailInit(self.allocator, pos);
+            result.* = try MatchResult.matchFailInit(self.allocator, pos);
             return result;
         }
+    }
+
+    // 释放 RuntimeParser
+    // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）
+    // 的内存由 PEZParser 分配。如果这里调用 rules.deinit()，会导致内存对齐错误。
+    // 因此，RuntimeParser 不应该释放 HashMap，应该由 PEZParser 负责释放。
+    pub fn deinit(self: *RuntimeParser) void {
+        // 什么都不做，因为：
+        // 1. HashMap 的键（规则名）由 PEZParser 分配，应该由 PEZParser 释放
+        // 2. HashMap 的值（*Rule）也由 PEZParser 拥有
+        // 3. RuntimeParser 只是共享这些规则，不拥有所有权
+        _ = self; // 避免未使用变量的警告
     }
 };
