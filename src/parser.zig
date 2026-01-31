@@ -511,6 +511,15 @@ pub const RuntimeParser = struct {
         };
     }
 
+    // 主匹配方法：根据规则名匹配输入字符串
+    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
+        if (self.rules.get(rule_name)) |r| {
+            return try self.matchResult(r, input, 0);
+        } else {
+            return error.RuleNotFound;
+        }
+    }
+
     pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
         return switch (rule.*) {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
@@ -533,15 +542,6 @@ pub const RuntimeParser = struct {
         };
     }
 
-    // 主匹配方法：根据规则名匹配输入字符串
-    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
-        if (self.rules.get(rule_name)) |r| {
-            return try self.matchResult(r, input, 0);
-        } else {
-            return error.RuleNotFound;
-        }
-    }
-
     fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) !*MatchResult {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
@@ -559,6 +559,14 @@ pub const RuntimeParser = struct {
             const result = try self.allocator.create(MatchResult);
             result.* = try MatchResult.matchFailInit(self.allocator, pos);
             return result;
+        }
+    }
+
+    fn matchRuleRef(self: *RuntimeParser, rule_ref: []const u8, input: []const u8, pos: usize) !*MatchResult{
+        if(self.rules.get(rule_ref))|r|{
+            
+        }else{
+            return error.RuleNotFound;
         }
     }
 
