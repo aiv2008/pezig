@@ -523,12 +523,13 @@ pub const RuntimeParser = struct {
     pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
         return switch (rule.*) {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
-            // .rule_ref => {
-            //     // 处理规则引用
-            // },
-            // .sequence => {
-            //     // 处理序列（A ~ B）
-            // },
+            .rule_ref => |rule_ref|{
+                // 处理规则引用
+                try self.matchRuleRef(rule_ref, input, pos);
+            },
+            .sequence => |s|{
+                // 处理序列（A ~ B）
+            },
             // .choice => {
             //     // 处理选择（A | B）
             // },
@@ -542,6 +543,7 @@ pub const RuntimeParser = struct {
         };
     }
 
+    //匹配字面量
     fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) !*MatchResult {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
@@ -562,12 +564,18 @@ pub const RuntimeParser = struct {
         }
     }
 
+    // 匹配规则引用
     fn matchRuleRef(self: *RuntimeParser, rule_ref: []const u8, input: []const u8, pos: usize) !*MatchResult{
         if(self.rules.get(rule_ref))|r|{
-            
+            return self.matchResult(r, input, pos);
         }else{
             return error.RuleNotFound;
         }
+    }
+
+    // 匹配序列
+    fn matchSequence(self: *RuntimeParser,  seq: struct {left: *Rule, right: *Rule}, input: []const u8, pos: usize) !*MatchResult{
+        return error.RuleNotFound;
     }
 
     // 释放 RuntimeParser
