@@ -1,5 +1,6 @@
 const std = @import("std");
-const Rule = @import("ast.zig").Rule;
+const ast = @import("ast.zig");
+const Rule = ast.Rule;
 const parser_errors = @import("errors.zig");
 const MatchResult = @import("ast.zig").MatchResult;
 
@@ -512,7 +513,7 @@ pub const RuntimeParser = struct {
     }
 
     // 主匹配方法：根据规则名匹配输入字符串
-    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) !*MatchResult {
+    pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) parser_errors.ParserError!*MatchResult {
         if (self.rules.get(rule_name)) |r| {
             return try self.matchResult(r, input, 0);
         } else {
@@ -520,20 +521,12 @@ pub const RuntimeParser = struct {
         }
     }
 
-    pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) !*MatchResult {
+    pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
         return switch (rule.*) {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
-            .rule_ref => |rule_ref|{
-                // 处理规则引用
-                try self.matchRuleRef(rule_ref, input, pos);
-            },
-            .sequence => |s|{
-                // 处理序列（A ~ B）
-            },
-            // .choice => {
-            //     // 处理选择（A | B）
-            // },
-            // ... 其他类型
+            .rule_ref => |rule_ref| try self.matchRuleRef(rule_ref, input, pos),
+            .sequence => |s| try self.matchSequence(s, input, pos),
+            // .choice => { ... },
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -544,7 +537,7 @@ pub const RuntimeParser = struct {
     }
 
     //匹配字面量
-    fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) !*MatchResult {
+    fn matchLiteral(self: *RuntimeParser, literal: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
             const result = try self.allocator.create(MatchResult);
@@ -564,19 +557,31 @@ pub const RuntimeParser = struct {
         }
     }
 
-    // 匹配规则引用
-    fn matchRuleRef(self: *RuntimeParser, rule_ref: []const u8, input: []const u8, pos: usize) !*MatchResult{
-        if(self.rules.get(rule_ref))|r|{
-            return self.matchResult(r, input, pos);
-        }else{
-            return error.RuleNotFound;
-        }
+    // 匹配规则引用：根据规则名查找规则，递归匹配
+    fn matchRuleRef(self: *RuntimeParser, rule_ref: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const r = self.rules.get(rule_ref) orelse return error.RuleNotFound;
+        return try self.matchResult(r, input, pos);
     }
 
     // 匹配序列
-    fn matchSequence(self: *RuntimeParser,  seq: struct {left: *Rule, right: *Rule}, input: []const u8, pos: usize) !*MatchResult{
-        return error.RuleNotFound;
+    fn matchSequence(self: *RuntimeParser, seq: ast.Sequence, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const left_result = try self.matchResult(seq.left, input, pos);
+        if (!left_result.success) {
+            return left_result;
+        }
+        const right_result = try self.matchResult(seq.right, input, left_result.end_position);
+        if (!right_result.success) {
+            return right_result;
+        }
+        var mr = try MatchResult.init(self.allocator, left_result.start_position, right_result.end_position, input[left_result.start_position..right_result.end_position]);
+        try mr.children.append(self.allocator, left_result);
+        try mr.children.append(self.allocator, right_result);
+        const ptr_result = try self.allocator.create(MatchResult);
+        ptr_result.* = mr;
+        return ptr_result;
     }
+
+    // fn matchChoice(self: *RuntimeParser, )
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）

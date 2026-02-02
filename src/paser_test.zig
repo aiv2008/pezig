@@ -6,38 +6,25 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    std.debug.print("测试1\n", .{});
+    std.debug.print("测试 31111: 解析序列操作符\n", .{});
     {
-        const grammar = "hello = { \"world\" }";
+        const grammar =
+            \\ab = { \"a\" ~ \"b\" ~ \"c\" }
+            \\a = {"oh, "}
+            \\b = {"hello"}
+            \\c = {"world"}
+        ;
         var parser = PEZParser.init(allocator, grammar);
         try parser.parse();
-        // defer parser.deinit();
+        defer parser.deinit();
 
-        if (parser.rules.get("hello")) |rule| {
-            std.debug.print("  规则 'hello' 解析成功\n", .{});
-            std.debug.print("  规则类型: literal\n", .{});
-            std.debug.print("  规则值: \"{s}\"\n\n", .{rule.literal});
+        if (parser.rules.get("ab")) |_| {
+            std.debug.print("  规则 'ab' 解析成功\n", .{});
+            std.debug.print("  规则类型: sequence\n\n", .{});
         }
-        const s = "world";
-        const s2 = "worl";
-        var runtime_parser = RuntimeParser.init(allocator, parser.rules);
-        // 注意：runtime_parser 不需要调用 deinit()，因为它只是共享规则
-        // 规则的所有权属于 parser，由 parser.deinit() 负责释放
-        defer parser.deinit(); // 释放规则对象和 HashMap
-        
-        const result1 = try runtime_parser.match("hello", s);
-        defer {
-            result1.deinit();
-            allocator.destroy(result1);
-        }
-        
-        const result2 = try runtime_parser.match("hello", s2);
-        defer {
-            result2.deinit();
-            allocator.destroy(result2);
-        }
-        
-        std.debug.print("result1 = {}\n", .{result1.success});
-        std.debug.print("result2 = {}\n", .{result2.success});
+
+        var runtimeParser = RuntimeParser.init(allocator, parser.rules);
+        const matchResult = try runtimeParser.match("ab", parser.input);
+        std.debug.print("success: {}", .{matchResult.success});
     }
 }

@@ -2,6 +2,12 @@ const std = @import("std");
 const ast_errors = @import("errors.zig");
 const stack = @import("stack.zig");
 
+/// 序列结构体，供 Rule.sequence 和 matchSequence 共用，避免匿名结构体类型不匹配
+pub const Sequence = struct {
+    left: *Rule,
+    right: *Rule,
+};
+
 pub const Rule = union(enum) {
     // 字面量匹配
     literal: []const u8,
@@ -13,10 +19,7 @@ pub const Rule = union(enum) {
     rule_ref: []const u8,
 
     // 序列：A ~ B（A 后跟 B）
-    sequence: struct {
-        left: *Rule,
-        right: *Rule,
-    },
+    sequence: Sequence,
 
     // 选择：A | B（A 或 B，有序）
     choice: struct {
