@@ -178,6 +178,7 @@ pub const PEZParser = struct {
 
         // 复制规则名（因为 name_slice 只是指向原始输入的切片）
         const name = try self.allocator.dupe(u8, name_slice);
+        errdefer self.allocator.free(name);
 
         // 2. 跳过空白，检查并跳过 '='
         self.skipWhitespace();
@@ -195,6 +196,7 @@ pub const PEZParser = struct {
 
         // 4. 解析规则体（使用 parseExpression）
         const rule_ptr = try self.parseExpression();
+        errdefer self.freeRule(rule_ptr);
 
         // 5. 跳过空白，查找并跳过 '}'
         self.skipWhitespace();

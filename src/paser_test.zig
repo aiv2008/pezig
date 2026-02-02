@@ -25,6 +25,10 @@ pub fn main() !void {
 
         var runtimeParser = RuntimeParser.init(allocator, parser.rules);
         const matchResult = try runtimeParser.match("ab", parser.input);
-        std.debug.print("success: {}", .{matchResult.success});
+        defer {
+            matchResult.deinit();
+            allocator.destroy(matchResult);
+        }
+        std.debug.print("success: {}\n", .{matchResult.success});
     }
 }
