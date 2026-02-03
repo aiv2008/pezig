@@ -514,6 +514,7 @@ pub const RuntimeParser = struct {
         };
     }
 
+    // 加ParserError是为了防止循环依赖
     // 主匹配方法：根据规则名匹配输入字符串
     pub fn match(self: *RuntimeParser, rule_name: []const u8, input: []const u8) parser_errors.ParserError!*MatchResult {
         if (self.rules.get(rule_name)) |r| {
@@ -602,7 +603,22 @@ pub const RuntimeParser = struct {
         return ptr_result;
     }
 
-    // fn matchChoice(self: *RuntimeParser, )
+    // 选择：A | B（A 或 B，有序）
+    fn matchChoice(self: *RuntimeParser, cho: ast.Choice, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const left_result = try self.matchResult(cho.left, input, pos);
+        if (left_result.success) {
+            return left_result;
+        }
+        //这里其实未知是pos，不是left_result.end_position，因为a失败，b从a的位置开始匹配
+        const right_result = try self.matchResult(cho.right, input, pos);
+        left_result.deinit();
+        self.allocator.destroy(left_result);
+        errdefer {
+            left_result.deinit();
+            self.allocator.destroy(left_result);
+        }
+        return right_result;
+    }
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）

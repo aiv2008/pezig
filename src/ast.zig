@@ -8,6 +8,24 @@ pub const Sequence = struct {
     right: *Rule,
 };
 
+pub const Choice = struct {
+    left: *Rule,
+    right: *Rule,
+};
+
+pub const Repeat = struct {
+    rule: *Rule,
+    // 最少次数
+    min: usize,
+    // 最多次数（null 表示无限制）
+    max: ?usize,
+};
+
+pub const Precedence = struct {
+    rules: []Rule,
+    levels: []PrecedenceLevel,
+};
+
 pub const Rule = union(enum) {
     // 字面量匹配
     literal: []const u8,
@@ -22,22 +40,13 @@ pub const Rule = union(enum) {
     sequence: Sequence,
 
     // 选择：A | B（A 或 B，有序）
-    choice: struct {
-        left: *Rule,
-        right: *Rule,
-    },
+    choice: Choice,
 
     // 可选：A?
     optional: *Rule,
 
     // 重复：A+ 或 A*
-    repeat: struct {
-        rule: *Rule,
-        // 最少次数
-        min: usize,
-        // 最多次数（null 表示无限制）
-        max: ?usize,
-    },
+    repeat: Repeat,
 
     // 否定前瞻：!A（不匹配 A）
     not_predicate: *Rule,
@@ -52,10 +61,8 @@ pub const Rule = union(enum) {
     atomic: *Rule,
 
     // 优先级组
-    precedence: struct {
-        rules: []Rule,
-        levels: []PrecedenceLevel,
-    },
+    precedence: Precedence,
+
     pub fn parse(self: *Rule) void {
         switch (self.*) {
             .literal => |value| {
