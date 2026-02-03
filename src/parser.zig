@@ -572,6 +572,18 @@ pub const RuntimeParser = struct {
             return left_result;
         }
         const right_result = try self.matchResult(seq.right, input, left_result.end_position);
+        var left_flag = true; //标志：left_result 是否还需要本函数负责释放
+        var right_flag = true; //标志：right_result 是否还需要本函数负责释放
+        errdefer {
+            if (left_flag) {
+                left_result.deinit();
+                self.allocator.destroy(left_result);
+            }
+            if (right_flag) {
+                right_result.deinit();
+                self.allocator.destroy(right_result);
+            }
+        }
         if (!right_result.success) {
             // 在 right_result 失败时，left_result 已被分配但未被释放，导致泄漏。堆栈中显示 matchLiteral 是因为 left_result 可能由匹配字面量的链产生。
             // 修复方案：在返回 right_result 前释放 left_result
@@ -580,8 +592,11 @@ pub const RuntimeParser = struct {
             return right_result;
         }
         var mr = try MatchResult.init(self.allocator, left_result.start_position, right_result.end_position, input[left_result.start_position..right_result.end_position]);
+        errdefer mr.deinit();
         try mr.children.append(self.allocator, left_result);
+        left_flag = false; // 已转移给 mr
         try mr.children.append(self.allocator, right_result);
+        right_flag = false; // 已转移给 mr
         const ptr_result = try self.allocator.create(MatchResult);
         ptr_result.* = mr;
         return ptr_result;
