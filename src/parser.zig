@@ -529,7 +529,7 @@ pub const RuntimeParser = struct {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
             .rule_ref => |rule_ref| try self.matchRuleRef(rule_ref, input, pos),
             .sequence => |s| try self.matchSequence(s, input, pos),
-            // .choice => { ... },
+            .choice => |ch| try self.matchChoice(ch, input, pos),
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -609,14 +609,14 @@ pub const RuntimeParser = struct {
         if (left_result.success) {
             return left_result;
         }
-        //这里其实未知是pos，不是left_result.end_position，因为a失败，b从a的位置开始匹配
-        const right_result = try self.matchResult(cho.right, input, pos);
-        left_result.deinit();
-        self.allocator.destroy(left_result);
         errdefer {
             left_result.deinit();
             self.allocator.destroy(left_result);
         }
+        //这里其实未知是pos，不是left_result.end_position，因为a失败，b从a的位置开始匹配
+        const right_result = try self.matchResult(cho.right, input, pos);
+        left_result.deinit();
+        self.allocator.destroy(left_result);
         return right_result;
     }
 
