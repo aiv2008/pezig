@@ -573,6 +573,10 @@ pub const RuntimeParser = struct {
         }
         const right_result = try self.matchResult(seq.right, input, left_result.end_position);
         if (!right_result.success) {
+            // 在 right_result 失败时，left_result 已被分配但未被释放，导致泄漏。堆栈中显示 matchLiteral 是因为 left_result 可能由匹配字面量的链产生。
+            // 修复方案：在返回 right_result 前释放 left_result
+            left_result.deinit();
+            self.allocator.destroy(left_result);
             return right_result;
         }
         var mr = try MatchResult.init(self.allocator, left_result.start_position, right_result.end_position, input[left_result.start_position..right_result.end_position]);
