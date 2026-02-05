@@ -530,6 +530,8 @@ pub const RuntimeParser = struct {
             .rule_ref => |rule_ref| try self.matchRuleRef(rule_ref, input, pos),
             .sequence => |s| try self.matchSequence(s, input, pos),
             .choice => |ch| try self.matchChoice(ch, input, pos),
+            .optional => |opt| try self.matchOptional(opt, input, pos),
+            .repeat => |repeat| try self.matchRepeat(repeat, input, pos),
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -619,6 +621,26 @@ pub const RuntimeParser = struct {
         self.allocator.destroy(left_result);
         return right_result;
     }
+
+    // 可选：A?，匹配 0 次或 1 次，始终成功
+    fn matchOptional(self: *RuntimeParser, optl: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const result = try self.matchResult(optl, input, pos);
+        if (result.success) {
+            return result;
+        }
+        result.deinit();
+        self.allocator.destroy(result);
+        const empty = try MatchResult.init(self.allocator, pos, pos, "");
+        // errdefer empty.children.deinit(self.allocator);
+        errdefer {
+            empty.deinit();
+        }
+        const ptr = try self.allocator.create(MatchResult);
+        ptr.* = empty;
+        return ptr;
+    }
+
+    fn matchRepeat(self: *RuntimeParser, repeat: ast.Repeat, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {}
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）
