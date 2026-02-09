@@ -640,7 +640,46 @@ pub const RuntimeParser = struct {
         return ptr;
     }
 
-    fn matchRepeat(self: *RuntimeParser, repeat: ast.Repeat, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {}
+    fn matchRepeat(self: *RuntimeParser, repeat: ast.Repeat, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const m = try MatchResult.init(self.allocator, pos, pos, "");
+        var p_result = try self.allocator.create(MatchResult);
+        p_result.* = m;
+        errdefer {
+            p_result.deinit();
+            self.allocator.destroy(p_result);
+        }
+        var current_pos = pos;
+        var count = 0;
+        while (true) {
+            if (repeat.max) |max| {
+                if (count >= max) {
+                    break;
+                }
+            }
+            const result = try self.matchResult(repeat.rule, input, current_pos);
+            errdefer {
+                result.deinit();
+                self.allocator.destroy(result);
+            }
+            if (result.success) {
+                p_result.children.append(self.allocator, result);
+                current_pos = result.end_position;
+                count += 1;
+                continue;
+            }
+            break;
+        }
+        if (count < repeat.min) {
+            p_result.deinit();
+            self.allocator.destroy(p_result);
+            const result = try self.allocator.create(MatchResult);
+            result.* = try MatchResult.matchFailInit(self.allocator, pos);
+            return result;
+        }
+        p_result.end_position = current_pos;
+        p_result.matched_text = input[pos..current_pos];
+        return p_result;
+    }
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）
