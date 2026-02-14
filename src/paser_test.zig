@@ -13,7 +13,7 @@ pub fn main() !void {
             // \\a = {"oh, "}
             // \\b = {"hello "}
             // \\c = {"world"}
-            \\ ab = { a+ }
+            \\ ab = { &a }
             \\ a = { "hello" }
         ;
         // const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
@@ -28,7 +28,7 @@ pub fn main() !void {
 
         var runtimeParser = RuntimeParser.init(allocator, parser.rules);
         // const matchResult = try runtimeParser.match("ab", "oh, hello worl");
-        const matchResult = try runtimeParser.match("ab", "hellohellohello");
+        const matchResult = try runtimeParser.match("ab", "hellohellhello");
         defer {
             matchResult.deinit();
             allocator.destroy(matchResult);
