@@ -534,6 +534,7 @@ pub const RuntimeParser = struct {
             .repeat => |repeat| try self.matchRepeat(repeat, input, pos),
             .not_predicate => |np| try self.matchNotPredicate(np, input, pos),
             .and_predicate => |ap| try self.matchAndPredicate(ap, input, pos),
+            .silent => |sl| try self.matchSilent(sl, input, pos),
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -731,7 +732,23 @@ pub const RuntimeParser = struct {
         return ptr_result;
     }
 
-    fn matchSilent(self: *RuntimeParser, sl: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!MatchResult {}
+    fn matchSilent(self: *RuntimeParser, sl: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const result = try self.matchResult(sl, input, pos);
+        errdefer {
+            result.deinit();
+            self.allocator.destroy(result);
+        }
+        if (result.success) {
+            const end_pos = result.end_position;
+            result.deinit();
+            self.allocator.destroy(result);
+            const ptr_result = try self.allocator.create(MatchResult);
+            ptr_result.* = try MatchResult.init(self.allocator, pos, end_pos, "");
+            errdefer self.allocator.destroy(ptr_result);
+            return ptr_result;
+        }
+        return result;
+    }
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）
