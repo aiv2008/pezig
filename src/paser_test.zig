@@ -9,10 +9,12 @@ pub fn main() !void {
     std.debug.print("测试 31111: 解析序列操作符\n", .{});
     {
         const grammar =
-            \\ab = { a ~ b ~ c }
-            \\a = {"oh, "}
-            \\b = {"hello "}
-            \\c = {"world"}
+            // \\ab = { a ~ b ~ c }
+            // \\a = {"oh, "}
+            // \\b = {"hello "}
+            // \\c = {"world"}
+            \\ ab = { a+ }
+            \\ a = { "hello" }
         ;
         // const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
         var parser = PEZParser.init(allocator, grammar);
@@ -25,7 +27,8 @@ pub fn main() !void {
         }
 
         var runtimeParser = RuntimeParser.init(allocator, parser.rules);
-        const matchResult = try runtimeParser.match("ab", "oh, hello worl");
+        // const matchResult = try runtimeParser.match("ab", "oh, hello worl");
+        const matchResult = try runtimeParser.match("ab", "hellohellohello");
         defer {
             matchResult.deinit();
             allocator.destroy(matchResult);

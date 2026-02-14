@@ -535,6 +535,9 @@ pub const RuntimeParser = struct {
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
+                errdefer {
+                    result.deinit();
+                }
                 result.* = try MatchResult.matchFailInit(self.allocator, pos);
                 return result;
             },
@@ -546,6 +549,9 @@ pub const RuntimeParser = struct {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
             const result = try self.allocator.create(MatchResult);
+            errdefer {
+                result.deinit();
+            }
             result.* = try MatchResult.matchFailInit(self.allocator, pos);
             return result;
         }
@@ -553,10 +559,16 @@ pub const RuntimeParser = struct {
             const matched_text = input[pos .. pos + literal.len];
             const mr = try MatchResult.init(self.allocator, pos, pos + literal.len, matched_text);
             const result = try self.allocator.create(MatchResult);
+            errdefer {
+                result.deinit();
+            }
             result.* = mr;
             return result;
         } else {
             const result = try self.allocator.create(MatchResult);
+            errdefer {
+                result.deinit();
+            }
             result.* = try MatchResult.matchFailInit(self.allocator, pos);
             return result;
         }
@@ -633,7 +645,11 @@ pub const RuntimeParser = struct {
         const empty = try MatchResult.init(self.allocator, pos, pos, "");
         // errdefer empty.children.deinit(self.allocator);
         errdefer {
-            empty.deinit();
+            // empty.deinit();
+            for (empty.children.items) |child| {
+                child.deinit();
+                self.allocator.destroy(child);
+            }
         }
         const ptr = try self.allocator.create(MatchResult);
         ptr.* = empty;
@@ -649,7 +665,7 @@ pub const RuntimeParser = struct {
             self.allocator.destroy(p_result);
         }
         var current_pos = pos;
-        var count = 0;
+        var count: usize = 0;
         while (true) {
             if (repeat.max) |max| {
                 if (count >= max) {
@@ -662,11 +678,13 @@ pub const RuntimeParser = struct {
                 self.allocator.destroy(result);
             }
             if (result.success) {
-                p_result.children.append(self.allocator, result);
+                try p_result.children.append(self.allocator, result);
                 current_pos = result.end_position;
                 count += 1;
                 continue;
             }
+            result.deinit();
+            self.allocator.destroy(result);
             break;
         }
         if (count < repeat.min) {
