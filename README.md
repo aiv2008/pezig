@@ -588,7 +588,10 @@ fn executeAction(action: SemanticAction, match: MatchResult) !void {
 
 ## 当前实现进度
 
-### 已实现功能（阶段 1.1 部分完成）
+### 已实现功能（阶段 1.1 与 1.2 已完成）
+
+- **阶段 1.1**：PEG 规则解析器（PEZParser、表达式解析、规则定义、内存管理）— 见下文 1–10。
+- **阶段 1.2**：运行时匹配引擎（RuntimeParser、各 Rule 类型匹配、原子禁用回溯）— 见「阶段 1.2 已完成（匹配引擎）」小节。
 
 #### 1. PEZParser 基础结构
 
@@ -1013,29 +1016,45 @@ const expr_rule = parser.rules.get("expression");
 // expr_rule 现在包含完整的规则 AST
 ```
 
-### 下一步待实现（阶段 1.2：匹配引擎）
+### 阶段 1.2 已完成（匹配引擎）
 
-1. **实现基础匹配引擎**
-   - 实现 `RuntimeParser` 结构体
-   - 实现 `match()` 方法，根据规则匹配输入字符串
-   - 返回 `MatchResult` 对象
+**✅ 已实现：**
 
-2. **实现各种规则类型的匹配**
-   - ✅ 字面量匹配（`Rule.literal`）
-   - ⏳ 规则引用匹配（`Rule.rule_ref`）
-   - ⏳ 序列匹配（`Rule.sequence`）
-   - ⏳ 选择匹配（`Rule.choice`）
-   - ⏳ 可选匹配（`Rule.optional`）
-   - ⏳ 重复匹配（`Rule.repeat`）
-   - ⏳ 前缀操作符匹配（`!`, `&`, `_`, `@`）
+1. **基础匹配引擎**
+   - `RuntimeParser` 结构体，基于 `PEZParser` 的规则 HashMap
+   - `match(rule_name, input)`：按规则名匹配输入，返回 `*MatchResult`
+   - `MatchResult` 含 `success`、`start_position`、`end_position`、`matched_text`、`children`、`atomic_failure`
 
-3. **实现回溯机制**
-   - PEG 使用有序选择，需要支持回溯
-   - 实现匹配状态保存和恢复
+2. **规则类型匹配（均已接入 `matchResult` 的 switch）**
+   - ✅ 字面量匹配（`Rule.literal`）— `matchLiteral`
+   - ✅ 规则引用（`Rule.rule_ref`）— `matchRuleRef`
+   - ✅ 序列（`Rule.sequence`）— `matchSequence`
+   - ✅ 选择（`Rule.choice`）— `matchChoice`
+   - ✅ 可选（`Rule.optional`）— `matchOptional`
+   - ✅ 重复（`Rule.repeat`）— `matchRepeat`
+   - ✅ 否定前瞻（`Rule.not_predicate`，`!A`）— `matchNotPredicate`，不消费输入
+   - ✅ 肯定前瞻（`Rule.and_predicate`，`&A`）— `matchAndPredicate`，不消费输入
+   - ✅ 静默（`Rule.silent`，`_A`）— `matchSilent`，匹配但不捕获（消费输入、不暴露子结果）
+   - ✅ 原子（`Rule.atomic`，`@A`）— `matchAtomic`，失败时设置 `atomic_failure`，`matchChoice` 在原子失败时不再试右分支（禁用回溯）
 
-4. **实现错误处理**
-   - 提供详细的错误信息
-   - 错误位置定位
+3. **内存与错误路径**
+   - 所有 match 分支的 `errdefer` 与成功/失败路径的 `deinit`/`destroy` 已处理，避免泄漏与 use-after-free
+
+**⏳ 尚未实现（仍走 `matchResult` 的 `else` 返回失败）：**
+   - `Rule.regex` — 需正则或简单子集
+   - `Rule.precedence` — 需 `matchPrecedence` 按优先级层级尝试
+
+### 下一步待实现
+
+1. **可选：匹配引擎扩展**
+   - 实现 `matchRegex`（或先用字面量占位）
+   - 实现 `matchPrecedence`，支持优先级组规则
+
+2. **可选：回溯机制**
+   - 若需“可回溯的 repeat”（少匹配几次再试），在 repeat 内需根据 `atomic_failure` 决定是否尝试更少次数
+
+3. **错误与可观测性**
+   - 匹配失败时返回更详细的错误信息（位置、期望规则等）
 
 ## Zig 实现优势
 

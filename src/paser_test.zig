@@ -13,8 +13,9 @@ pub fn main() !void {
             // \\a = {"oh, "}
             // \\b = {"hello "}
             // \\c = {"world"}
-            \\ ab = { &a }
+            \\ ab = { @a | b }
             \\ a = { "hello" }
+            \\ b = { "hell" }
         ;
         // const grammar = "ab = { \"a\" ~ \"b\" ~ \"c\" }";
         var parser = PEZParser.init(allocator, grammar);
@@ -28,7 +29,7 @@ pub fn main() !void {
 
         var runtimeParser = RuntimeParser.init(allocator, parser.rules);
         // const matchResult = try runtimeParser.match("ab", "oh, hello worl");
-        const matchResult = try runtimeParser.match("ab", "hellohellhello");
+        const matchResult = try runtimeParser.match("ab", "hell");
         defer {
             matchResult.deinit();
             allocator.destroy(matchResult);

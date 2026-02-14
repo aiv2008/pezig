@@ -156,14 +156,16 @@ pub const MatchResult = struct {
     matched_text: []const u8,
     children: std.ArrayList(*MatchResult),
     allocator: std.mem.Allocator,
+    atomic_failure: bool, //默认为false，当且只当 原子：@A（禁用回溯） 时用到，设为true
     pub fn init(allocator: std.mem.Allocator, start: usize, end: usize, text: []const u8) !MatchResult {
         return MatchResult{
-            .allocator = allocator,
             .start_position = start,
             .end_position = end,
             .matched_text = text,
             .success = true,
             .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
+            .allocator = allocator,
+            .atomic_failure = false,
         };
     }
     //匹配异常重新初始化
@@ -175,6 +177,7 @@ pub const MatchResult = struct {
             .matched_text = "",
             .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
             .allocator = allocator,
+            .atomic_failure = false,
         };
     }
 

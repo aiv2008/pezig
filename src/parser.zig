@@ -535,6 +535,7 @@ pub const RuntimeParser = struct {
             .not_predicate => |np| try self.matchNotPredicate(np, input, pos),
             .and_predicate => |ap| try self.matchAndPredicate(ap, input, pos),
             .silent => |sl| try self.matchSilent(sl, input, pos),
+            .atomic => |at| try self.matchAtomic(at, input, pos),
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -624,6 +625,9 @@ pub const RuntimeParser = struct {
     fn matchChoice(self: *RuntimeParser, cho: ast.Choice, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
         const left_result = try self.matchResult(cho.left, input, pos);
         if (left_result.success) {
+            return left_result;
+        }
+        if (left_result.atomic_failure) {
             return left_result;
         }
         errdefer {
@@ -748,6 +752,25 @@ pub const RuntimeParser = struct {
             return ptr_result;
         }
         return result;
+    }
+
+    fn matchAtomic(self: *RuntimeParser, at: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const result = try self.matchResult(at, input, pos);
+        errdefer {
+            result.deinit();
+            self.allocator.destroy(result);
+        }
+        if (result.success) {
+            return result;
+        }
+        result.deinit();
+        self.allocator.destroy(result);
+        const ptr_result = try self.allocator.create(MatchResult);
+        errdefer self.allocator.destroy(ptr_result);
+        // 如果以后在 ptr_result.* = ... 之后还有 try，并且那个 try 可能失败，那时才需要在对应的 errdefer 里先 ptr_result.deinit() 再 destroy(ptr_result)。当前这段代码在赋值之后没有别的 try，所以不需要。
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.atomic_failure = true;
+        return ptr_result;
     }
 
     // 释放 RuntimeParser
