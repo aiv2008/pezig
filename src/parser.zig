@@ -532,6 +532,8 @@ pub const RuntimeParser = struct {
             .choice => |ch| try self.matchChoice(ch, input, pos),
             .optional => |opt| try self.matchOptional(opt, input, pos),
             .repeat => |repeat| try self.matchRepeat(repeat, input, pos),
+            .not_predicate => |np| try self.matchNotPredicate(np, input, pos),
+            .and_predicate => |ap| try self.matchAndPredicate(ap, input, pos),
             else => {
                 // 暂未实现的规则类型：返回失败结果，便于上层回溯
                 const result = try self.allocator.create(MatchResult);
@@ -698,6 +700,38 @@ pub const RuntimeParser = struct {
         p_result.matched_text = input[pos..current_pos];
         return p_result;
     }
+
+    fn matchNotPredicate(self: *RuntimeParser, np: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const result = try self.matchResult(np, input, pos);
+        errdefer {
+            result.deinit();
+            self.allocator.destroy(result);
+        }
+        const ptr_result = try self.allocator.create(MatchResult);
+        errdefer self.allocator.destroy(ptr_result);
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.success = !result.success; // !A 成功当且仅当子规则不匹配
+        result.deinit();
+        self.allocator.destroy(result);
+        return ptr_result;
+    }
+
+    fn matchAndPredicate(self: *RuntimeParser, ap: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        const result = try self.matchResult(ap, input, pos);
+        errdefer {
+            result.deinit();
+            self.allocator.destroy(result);
+        }
+        const ptr_result = try self.allocator.create(MatchResult);
+        errdefer self.allocator.destroy(ptr_result);
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.success = result.success; // &A 成功当且仅当子规则匹配
+        result.deinit();
+        self.allocator.destroy(result);
+        return ptr_result;
+    }
+
+    fn matchSilent(self: *RuntimeParser, sl: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!MatchResult {}
 
     // 释放 RuntimeParser
     // 注意：RuntimeParser 通过值传递复制了 HashMap，但 HashMap 的键（规则名）
