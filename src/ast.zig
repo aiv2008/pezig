@@ -157,6 +157,8 @@ pub const MatchResult = struct {
     children: std.ArrayList(*MatchResult),
     allocator: std.mem.Allocator,
     atomic_failure: bool, //默认为false，当且只当 原子：@A（禁用回溯） 时用到，设为true
+    expected_rule_name: ?[]const u8 = null,
+
     pub fn init(allocator: std.mem.Allocator, start: usize, end: usize, text: []const u8) !MatchResult {
         return MatchResult{
             .start_position = start,
@@ -166,10 +168,11 @@ pub const MatchResult = struct {
             .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
             .allocator = allocator,
             .atomic_failure = false,
+            .expected_rule_name = null,
         };
     }
-    //匹配异常重新初始化
-    pub fn matchFailInit(allocator: std.mem.Allocator, pos: usize) !MatchResult {
+    /// 匹配失败时初始化；expected 为可选，表示该位置期望的规则/字面量描述
+    pub fn matchFailInit(allocator: std.mem.Allocator, pos: usize, expected: ?[]const u8) !MatchResult {
         return MatchResult{
             .success = false,
             .start_position = pos,
@@ -178,6 +181,7 @@ pub const MatchResult = struct {
             .children = try std.ArrayList(*MatchResult).initCapacity(allocator, 200),
             .allocator = allocator,
             .atomic_failure = false,
+            .expected_rule_name = expected,
         };
     }
 

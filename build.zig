@@ -154,9 +154,34 @@ pub fn build(b: *std.Build) void {
     // Lastly, the Zig build system is relatively simple and self-contained,
     // and reading its source code will allow you to master it.
 
-    const regex = b.dependency("regex", .{
+    const regex_dep = b.dependency("regex", .{
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("regex", regex.module("regex"));
+    const regex_mod = regex_dep.module("regex");
+    exe.root_module.addImport("regex", regex_mod);
+
+    // paser_test.zig 的 test 块（含 matchRegex 等）：单独 test 可执行文件，需要 regex
+    const paser_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/paser_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "regex", .module = regex_mod },
+        },
+    });
+    const paser_test_tests = b.addTest(.{
+        .root_module = paser_test_mod,
+    });
+    const run_paser_test_tests = b.addRunArtifact(paser_test_tests);
+    test_step.dependOn(&run_paser_test_tests.step);
+
+    // 只跑 src/paser_test.zig 里的 test（不传 --listen，避免卡住/非零退出）
+    const test_paser_step = b.step("test-paser", "Run only tests in src/paser_test.zig");
+    const run_no_listen = std.Build.Step.Run.create(b, "test-paser run");
+    run_no_listen.addFileArg(paser_test_tests.getEmittedBin());
+    run_no_listen.addArgs(&.{ "--cache-dir=.zig-cache", "--seed=0" });
+    run_no_listen.setCwd(b.path("."));
+    run_no_listen.step.dependOn(&paser_test_tests.step);
+    test_paser_step.dependOn(&run_no_listen.step);
 }

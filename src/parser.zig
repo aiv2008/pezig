@@ -544,7 +544,7 @@ pub const RuntimeParser = struct {
                 errdefer {
                     result.deinit();
                 }
-                result.* = try MatchResult.matchFailInit(self.allocator, pos);
+                result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
                 return result;
             },
         };
@@ -573,53 +573,85 @@ pub const RuntimeParser = struct {
         errdefer {
             result.deinit();
         }
-        result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
         return result;
     }
 
-    //正则匹配
-    fn matchRegex(self: *RuntimeParser, reg: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
-        // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
-        if (pos + reg.len > input.len) {
+    // 正则匹配：在 input[pos..] 上匹配，且要求匹配从开头开始（PEG 语义）。pub 便于在 paser_test.zig 里直接测。
+    pub fn matchRegex(self: *RuntimeParser, reg: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        if (pos >= input.len) {
             const result = try self.allocator.create(MatchResult);
             errdefer result.deinit();
             result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
             return result;
         }
 
-        var regex = try Regex.compile(self.allocator, reg);
+        var regex = Regex.compile(self.allocator, reg) catch {
+            const result = try self.allocator.create(MatchResult);
+            errdefer result.deinit();
+            result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
+            return result;
+        };
         defer regex.deinit();
 
-        if (try regex.find(input)) |m| {
+        const suffix = input[pos..];
+        const find_result = regex.find(suffix) catch {
+            const result = try self.allocator.create(MatchResult);
+            errdefer result.deinit();
+            result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
+            return result;
+        };
+        if (find_result) |m| {
             var mut_match = m;
             defer mut_match.deinit(self.allocator);
-            // std.debug.print("Found: {s}\n", .{m.slice}); // "555-1234"
-
-            const matched_text = input[pos .. pos + regex.len];
-            const mr = try MatchResult.init(self.allocator, pos, pos + regex.len, matched_text);
-            const result = try self.allocator.create(MatchResult);
-            errdefer {
-                result.deinit();
+            // 这段代码在干什么
+            // suffix = input[pos..]：从位置 pos 开始到结尾的那一段输入。
+            // regex.find(suffix)：在 整段 suffix 里找第一个能匹配上的子串。
+            // m.slice：这次匹配到的子串（在 suffix 里的某一段）。
+            // m.slice.ptr != suffix.ptr：匹配到的子串不是从 suffix 的第一个字符开始的。
+            // 含义：只有在「从 pos 开头」就匹配上时我们才接受，否则当成匹配失败。
+            // 为什么要这样做（PEG 语义）
+            // 在 PEG 里，一条规则在位置 pos 的匹配含义是：
+            // 只关心：从 pos 开始能不能匹配；
+            // 不关心：在 pos 后面的某个位置能不能匹配。
+            // 所以：
+            // 若 find 在 suffix 中间某处才匹配到（例如 suffix = "x123"，匹配到 "123"），那不算「在 pos 处匹配成功」，应返回失败。
+            // 只有匹配到的 m.slice 正好就是 suffix 的前缀（即 m.slice.ptr == suffix.ptr）时，才表示「在 pos 处匹配成功」。
+            // 因此需要这段判断：m.slice.ptr != suffix.ptr 就返回失败。
+            // 举例
+            // 例 1：从开头匹配（应成功）
+            // input = "123", pos = 0, reg = "\\d+"
+            // suffix = "123"
+            // find(suffix) 得到匹配 m.slice = "123"，且 m.slice.ptr == suffix.ptr（都是 "123" 的起始）
+            // 不进入 if (m.slice.ptr != suffix.ptr)，继续构造成功结果。
+            // 例 2：匹配在中间（应失败，正是这段代码要处理的）
+            // input = "x123", pos = 0, reg = "\\d+"
+            // suffix = "x123"
+            // find(suffix) 会在中间找到 "123"，所以 m.slice = "123"，其 m.slice.ptr 指向 suffix 里的第 2 个字符，而 suffix.ptr 指向第 1 个字符 'x'。
+            // 因此 m.slice.ptr != suffix.ptr 为真，进入 if，返回失败。
+            // 这样就不会错误地认为「在位置 0 用 \d+ 匹配成功了」，符合 PEG：在位置 0 我们只接受「从 0 就开始」的匹配。
+            // 例 3：从 pos > 0 开始匹配（应成功）
+            // input = "x123", pos = 1, reg = "\\d+"
+            // suffix = "123"
+            // find(suffix) 得到 m.slice = "123"，且 m.slice.ptr == suffix.ptr（都是 "123" 的起始）
+            // 不进入 if，返回成功；表示在位置 1 用 \d+ 匹配到了 "123"。
+            if (m.slice.ptr != suffix.ptr) {
+                const result = try self.allocator.create(MatchResult);
+                errdefer result.deinit();
+                result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
+                return result;
             }
+            const matched_text = input[pos .. pos + m.slice.len];
+            const mr = try MatchResult.init(self.allocator, pos, pos + m.slice.len, matched_text);
+            const result = try self.allocator.create(MatchResult);
+            errdefer result.deinit();
             result.* = mr;
             return result;
         }
 
-        // if (std.mem.startsWith(u8, input[pos..], regex)) {
-        //     const matched_text = input[pos .. pos + regex.len];
-        //     const mr = try MatchResult.init(self.allocator, pos, pos + regex.len, matched_text);
-        //     const result = try self.allocator.create(MatchResult);
-        //     errdefer {
-        //         result.deinit();
-        //     }
-        //     result.* = mr;
-        //     return result;
-        // }
         const result = try self.allocator.create(MatchResult);
-        errdefer {
-            result.deinit();
-        }
-        result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        errdefer result.deinit();
+        result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
         return result;
     }
 
@@ -743,7 +775,7 @@ pub const RuntimeParser = struct {
             p_result.deinit();
             self.allocator.destroy(p_result);
             const result = try self.allocator.create(MatchResult);
-            result.* = try MatchResult.matchFailInit(self.allocator, pos);
+            result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
             return result;
         }
         p_result.end_position = current_pos;
@@ -759,7 +791,7 @@ pub const RuntimeParser = struct {
         }
         const ptr_result = try self.allocator.create(MatchResult);
         errdefer self.allocator.destroy(ptr_result);
-        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
         ptr_result.success = !result.success; // !A 成功当且仅当子规则不匹配
         result.deinit();
         self.allocator.destroy(result);
@@ -774,7 +806,7 @@ pub const RuntimeParser = struct {
         }
         const ptr_result = try self.allocator.create(MatchResult);
         errdefer self.allocator.destroy(ptr_result);
-        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
         ptr_result.success = result.success; // &A 成功当且仅当子规则匹配
         result.deinit();
         self.allocator.destroy(result);
@@ -813,7 +845,7 @@ pub const RuntimeParser = struct {
         const ptr_result = try self.allocator.create(MatchResult);
         errdefer self.allocator.destroy(ptr_result);
         // 如果以后在 ptr_result.* = ... 之后还有 try，并且那个 try 可能失败，那时才需要在对应的 errdefer 里先 ptr_result.deinit() 再 destroy(ptr_result)。当前这段代码在赋值之后没有别的 try，所以不需要。
-        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        ptr_result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
         ptr_result.atomic_failure = true;
         return ptr_result;
     }

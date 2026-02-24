@@ -147,10 +147,11 @@ pub fn main() !void {
 
     var regex = try Regex.compile(allocator, "\\d{3}-\\d{4}");
     defer regex.deinit();
-
-    if (try regex.find("Call me at 555-1234")) |match| {
-        var mut_match = match;
-        defer mut_match.deinit(allocator);
+    const s = "Call me at 555-1234 Call me at 555-1234";
+    std.debug.print("{s}\n", .{s.ptr});
+    if (try regex.find(s)) |match| {
+        // var mut_match = match;
+        // defer mut_match.deinit(allocator);
         std.debug.print("Found: {s}\n", .{match.slice}); // "555-1234"
     }
 }
