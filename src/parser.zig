@@ -3,6 +3,7 @@ const ast = @import("ast.zig");
 const Rule = ast.Rule;
 const parser_errors = @import("errors.zig");
 const MatchResult = @import("ast.zig").MatchResult;
+const Regex = @import("regex").Regex;
 
 //PEZParser中的input不是要翻译的字符串，而是规则字符串；
 // 譬如 `a = {"b" ~ "c"}`整个规则字符串就是PEZParser的输入input
@@ -527,6 +528,7 @@ pub const RuntimeParser = struct {
     pub fn matchResult(self: *RuntimeParser, rule: *Rule, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
         return switch (rule.*) {
             .literal => |lit| try self.matchLiteral(lit, input, pos),
+            .regex => |reg| try self.matchRegex(reg, input, pos),
             .rule_ref => |rule_ref| try self.matchRuleRef(rule_ref, input, pos),
             .sequence => |s| try self.matchSequence(s, input, pos),
             .choice => |ch| try self.matchChoice(ch, input, pos),
@@ -553,10 +555,8 @@ pub const RuntimeParser = struct {
         // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
         if (pos + literal.len > input.len) {
             const result = try self.allocator.create(MatchResult);
-            errdefer {
-                result.deinit();
-            }
-            result.* = try MatchResult.matchFailInit(self.allocator, pos);
+            errdefer result.deinit();
+            result.* = try MatchResult.matchFailInit(self.allocator, pos, literal);
             return result;
         }
         if (std.mem.startsWith(u8, input[pos..], literal)) {
@@ -568,14 +568,59 @@ pub const RuntimeParser = struct {
             }
             result.* = mr;
             return result;
-        } else {
+        }
+        const result = try self.allocator.create(MatchResult);
+        errdefer {
+            result.deinit();
+        }
+        result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        return result;
+    }
+
+    //正则匹配
+    fn matchRegex(self: *RuntimeParser, reg: []const u8, input: []const u8, pos: usize) parser_errors.ParserError!*MatchResult {
+        // 1. 边界检查：剩余长度不够 literal 则失败（相等时刚好够，不能用 >=）
+        if (pos + reg.len > input.len) {
+            const result = try self.allocator.create(MatchResult);
+            errdefer result.deinit();
+            result.* = try MatchResult.matchFailInit(self.allocator, pos, reg);
+            return result;
+        }
+
+        var regex = try Regex.compile(self.allocator, reg);
+        defer regex.deinit();
+
+        if (try regex.find(input)) |m| {
+            var mut_match = m;
+            defer mut_match.deinit(self.allocator);
+            // std.debug.print("Found: {s}\n", .{m.slice}); // "555-1234"
+
+            const matched_text = input[pos .. pos + regex.len];
+            const mr = try MatchResult.init(self.allocator, pos, pos + regex.len, matched_text);
             const result = try self.allocator.create(MatchResult);
             errdefer {
                 result.deinit();
             }
-            result.* = try MatchResult.matchFailInit(self.allocator, pos);
+            result.* = mr;
             return result;
         }
+
+        // if (std.mem.startsWith(u8, input[pos..], regex)) {
+        //     const matched_text = input[pos .. pos + regex.len];
+        //     const mr = try MatchResult.init(self.allocator, pos, pos + regex.len, matched_text);
+        //     const result = try self.allocator.create(MatchResult);
+        //     errdefer {
+        //         result.deinit();
+        //     }
+        //     result.* = mr;
+        //     return result;
+        // }
+        const result = try self.allocator.create(MatchResult);
+        errdefer {
+            result.deinit();
+        }
+        result.* = try MatchResult.matchFailInit(self.allocator, pos);
+        return result;
     }
 
     // 匹配规则引用：根据规则名查找规则，递归匹配
