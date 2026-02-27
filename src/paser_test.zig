@@ -2,6 +2,7 @@ const std = @import("std");
 const PEZParser = @import("parser.zig").PEZParser;
 const RuntimeParser = @import("parser.zig").RuntimeParser;
 const Rule = @import("ast.zig").Rule;
+const errors = @import("errors.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -128,4 +129,90 @@ test "matchRegex: 从 pos>0 匹配" {
     try std.testing.expectEqual(@as(usize, 1), res.start_position);
     try std.testing.expectEqual(@as(usize, 4), res.end_position);
     try std.testing.expectEqualStrings("123", res.matched_text);
+}
+
+// ---------- 错误与可观测性：失败用例与辅助函数测试 ----------
+
+test "literal match failure: start_position and expected_rule_name" {
+    const allocator = std.testing.allocator;
+    const name = try allocator.dupe(u8, "hello");
+    defer allocator.free(name);
+    var rules = std.StringHashMap(*Rule).init(allocator);
+    defer {
+        var it = rules.iterator();
+        while (it.next()) |e| allocator.destroy(e.value_ptr.*);
+        rules.deinit();
+    }
+    const rule_ptr = try allocator.create(Rule);
+    rule_ptr.* = .{ .literal = "world" };
+    try rules.put(name, rule_ptr);
+
+    var rp = RuntimeParser.init(allocator, rules);
+    const res = try rp.match("hello", "hello");
+    defer {
+        res.deinit();
+        allocator.destroy(res);
+    }
+    try std.testing.expect(!res.success);
+    try std.testing.expectEqual(@as(usize, 0), res.start_position);
+    try std.testing.expectEqual(@as(usize, 0), res.end_position);
+    try std.testing.expect(res.expected_rule_name != null);
+    try std.testing.expectEqualStrings("world", res.expected_rule_name.?);
+}
+
+test "repeat min not met: failure at current_pos" {
+    const allocator = std.testing.allocator;
+    const name = try allocator.dupe(u8, "a2");
+    defer allocator.free(name);
+    var rules = std.StringHashMap(*Rule).init(allocator);
+    const lit = try allocator.create(Rule);
+    lit.* = .{ .literal = "a" };
+    const rule_ptr = try allocator.create(Rule);
+    rule_ptr.* = .{ .repeat = .{ .rule = lit, .min = 2, .max = null } };
+    try rules.put(name, rule_ptr);
+    defer {
+        allocator.destroy(lit);
+        allocator.destroy(rule_ptr);
+        rules.deinit();
+    }
+
+    var rp = RuntimeParser.init(allocator, rules);
+    const res = try rp.match("a2", "a");
+    defer {
+        res.deinit();
+        allocator.destroy(res);
+    }
+    try std.testing.expect(!res.success);
+    try std.testing.expectEqual(@as(usize, 1), res.start_position);
+}
+
+test "byteIndexToLineColumn" {
+    var loc = errors.byteIndexToLineColumn("", 0);
+    try std.testing.expectEqual(@as(usize, 1), loc.line);
+    try std.testing.expectEqual(@as(usize, 1), loc.column);
+
+    loc = errors.byteIndexToLineColumn("ab", 0);
+    try std.testing.expectEqual(@as(usize, 1), loc.line);
+    try std.testing.expectEqual(@as(usize, 1), loc.column);
+
+    loc = errors.byteIndexToLineColumn("ab", 1);
+    try std.testing.expectEqual(@as(usize, 1), loc.line);
+    try std.testing.expectEqual(@as(usize, 2), loc.column);
+
+    loc = errors.byteIndexToLineColumn("a\nbc", 3);
+    try std.testing.expectEqual(@as(usize, 2), loc.line);
+    try std.testing.expectEqual(@as(usize, 2), loc.column);
+}
+
+test "formatFailureMessage" {
+    const allocator = std.testing.allocator;
+    const msg = try errors.formatFailureMessage(allocator, "a\nbc", 3, "digit");
+    defer allocator.free(msg);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "line") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "column") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "digit") != null);
+
+    const msg2 = try errors.formatFailureMessage(allocator, "xy", 1, null);
+    defer allocator.free(msg2);
+    try std.testing.expect(std.mem.indexOf(u8, msg2, "match failed") != null);
 }

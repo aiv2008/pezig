@@ -573,7 +573,7 @@ pub const RuntimeParser = struct {
         errdefer {
             result.deinit();
         }
-        result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
+        result.* = try MatchResult.matchFailInit(self.allocator, pos, literal);
         return result;
     }
 
@@ -775,7 +775,7 @@ pub const RuntimeParser = struct {
             p_result.deinit();
             self.allocator.destroy(p_result);
             const result = try self.allocator.create(MatchResult);
-            result.* = try MatchResult.matchFailInit(self.allocator, pos, null);
+            result.* = try MatchResult.matchFailInit(self.allocator, current_pos, null);
             return result;
         }
         p_result.end_position = current_pos;

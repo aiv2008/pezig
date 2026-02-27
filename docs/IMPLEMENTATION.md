@@ -501,9 +501,88 @@ const expr_rule = parser.rules.get("expression");
 2. **可选：回溯机制**
    - 若需“可回溯的 repeat”（少匹配几次再试），在 repeat 内需根据 `atomic_failure` 决定是否尝试更少次数
 
-3. **错误与可观测性**
+3. **错误与可观测性**（✅ 已完成）
    - 匹配失败时返回更详细的错误信息（位置、期望规则等）
+   - 已实现：`errors.byteIndexToLineColumn`、`errors.formatFailureMessage`；失败用例测试（字面量失败、repeat 不足 min、辅助函数）
 
+## 匹配失败的错误信息语义
+
+### MatchResult 的失败约定
+
+- **success**:
+  - `true`: 规则在当前位置匹配成功。
+  - `false`: 规则在当前位置匹配失败（语义失败，而不是系统错误）。
+- **start_position / end_position**:
+  - 成功时：`[start_position, end_position)` 是本次匹配消耗的输入区间，单位是 **byte index**。
+  - 失败时：`start_position == end_position == pos`，其中 `pos` 是「尝试匹配该规则时的起始位置」，即**失败位置**。
+- **expected_rule_name**:
+  - 在失败时，用作**人类可读的“期望描述”**，例如期望的字面量或正则模式：
+    - 字面量失败时为对应的 `literal`。
+    - 正则失败时为对应的 `reg`。
+  - 若当前规则没有一个简单的“单一期望”（例如组合规则、前瞻等），可以为 `null`。
+
+### ParserError 与 MatchResult 的分工
+
+- `ParserError`（见 `errors.zig`）只用于：
+  - **结构性/系统性错误**：如规则未找到 (`RuleNotFound`)、语法未闭合、内存分配失败等。
+- `MatchResult` 用于描述**语义匹配结果**：
+  - 成功：`success == true`，并附带子节点等信息。
+  - 失败：`success == false`，位置在 `start_position`，期望在 `expected_rule_name`。
+
+调用栈的约定是：
+
+- `RuntimeParser.match()` 返回：
+  - `error ParserError`: 表示解析过程中出现结构/系统错误。
+  - `*MatchResult`: 表示语义匹配结束（成功或失败），此时应根据 `success` 字段判断是否匹配成功。
+- 上层代码在需要向用户/测试暴露错误时：
+  - 使用 `MatchResult.start_position` 作为**失败 byte index**。
+  - 可选：根据完整输入将该 byte index 转换为「行号/列号」。
+  - 使用 `expected_rule_name` 构造「在位置 X 期望 ……」之类的错误文案。
+
+### 可选后续：byte index → 行/列
+
+- 若需对用户展示「第几行第几列」：
+  - 输入：完整 `input: []const u8` 与失败位置 `pos: usize`（即 byte index）。
+  - 逻辑：遍历 `input[0..pos]` 统计 `\n` 得到行号；列号 = `pos - 当前行起始 index`（可从 1 或 0 开始，与项目约定一致）。
+  - 建议：在需要打印错误时再调用，不改变 MatchResult 结构；可提供辅助函数如 `byteIndexToLineColumn(input, index) -> { line, column }`。
+
+### 可选后续：失败用例测试清单
+
+- 字面量失败：规则 `hello = { "world" }`，输入 `"hello"` → 断言 `!result.success`、`start_position == 0`、`expected_rule_name` 含 `"world"`。
+- repeat 不足 min：规则 `"a"+`（min=2），输入 `"a"` → 断言失败位置为 `current_pos`（例如 1）。
+- 前瞻、原子失败：!A / &A / @A 失败时 `start_position == 原 pos`，原子失败时 `atomic_failure == true`。
+
+---
+
+## 下一步：matchPrecedence（匹配引擎扩展）
+
+当前 `matchResult` 的 `else` 分支对 `Rule.precedence` 返回失败。下一步为实现 `matchPrecedence`，使优先级组规则可参与匹配。
+
+### 数据结构（当前 ast.zig）
+
+- `Precedence`：`rules: []Rule`，`levels: []PrecedenceLevel`。
+- `PrecedenceLevel`：`level: u8`，`associativity: enum { left, right, none }`，`rule: *Rule`。
+
+### 实现要点（引导，不写具体代码）
+
+1. **在 matchResult 中接入**  
+   对 `rule.* == .precedence` 不再走 `else`，改为调用新函数，例如 `matchPrecedence(rule.precedence, input, pos)`，返回 `!*MatchResult`。
+
+2. **matchPrecedence 的语义**  
+   - 按**优先级层级**依次尝试：通常按 `levels` 顺序（或按 `level` 字段排序后）从低到高尝试，直到某一层在 `pos` 处匹配成功。
+   - 每一层用该层对应的 `PrecedenceLevel.rule` 在当前位置调用 `matchResult`；若成功则返回该结果（并可记录匹配到的层级）；若失败则尝试下一层。
+   - 若所有层都失败，返回一个失败 `MatchResult`，位置为 `pos`，`expected_rule_name` 可为 `null` 或汇总「期望某一层级」的描述。
+
+3. **结合性（associativity）**  
+   - 若语法/规则已在 PEZ 解析阶段展开为左结合/右结合序列，则运行时可能只需按层尝试即可。
+   - 若需在匹配阶段体现结合性，左结合可在同一层内循环「匹配 op 再匹配下一级」；右结合可递归「匹配下一级再匹配 op」。先实现「按层尝试」即可，结合性可后续再细化。
+
+4. **内存与错误**  
+   - 成功时返回该层 `matchResult` 的结果，由调用方统一释放。
+   - 失败时新建一个 `MatchResult`（如 `matchFailInit`），保证与其它分支一致，避免泄漏。
+
+5. **测试**  
+   - 若已有或后续添加带 `precedence` 的语法（如 DESIGN 中的 `expression = precedence!{ ... }`），用简单表达式（如 `1+2*3`）验证先匹配低优先级层、再匹配高优先级层，且结果与预期一致。
 
 ---
 
