@@ -131,6 +131,29 @@ test "matchRegex: 从 pos>0 匹配" {
     try std.testing.expectEqualStrings("123", res.matched_text);
 }
 
+test "parse regex in grammar: ~/pattern/ produces Rule.regex" {
+    const allocator = std.testing.allocator;
+    // 语法中 ~/\d+/ 表示正则，解析后应为 Rule.regex，pattern 为 \d+
+    const grammar = "num = { ~/\\d+/ }";
+    var parser = PEZParser.init(allocator, grammar);
+    try parser.parse();
+    defer parser.deinit();
+
+    const rule_ptr = parser.rules.get("num").?;
+    try std.testing.expect(rule_ptr.* == .regex);
+    try std.testing.expectEqualStrings("\\d+", rule_ptr.regex);
+
+    // 顺带验证：用该规则匹配输入
+    var rp = RuntimeParser.init(allocator, parser.rules);
+    const res = try rp.match("num", "42");
+    defer {
+        res.deinit();
+        allocator.destroy(res);
+    }
+    try std.testing.expect(res.success);
+    try std.testing.expectEqualStrings("42", res.matched_text);
+}
+
 // ---------- 错误与可观测性：失败用例与辅助函数测试 ----------
 
 test "literal match failure: start_position and expected_rule_name" {

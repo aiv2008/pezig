@@ -2,8 +2,10 @@ const std = @import("std");
 
 pub const AstError = error{
     Unterminated,
+    UnterminatedRegex,
     NotAnAst,
     ExpectedClosingParen,
+    ExpectedRegexDelimiter,
 };
 
 pub const RuntimeError = error{

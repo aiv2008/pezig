@@ -110,6 +110,34 @@ pub const PEZParser = struct {
         return self.input[start_pos..self.position];
     }
 
+    /// 解析正则表达式：~/pattern/，支持 pattern 内的 \/ 和 \\ 转义
+    /// 调用前需已确认当前为 '~'，且其后为 '/'；返回引号内的模式（不含首尾 /）
+    fn parseRegex(self: *PEZParser) parser_errors.ParserError![]const u8 {
+        std.debug.assert(self.input[self.position] == '~');
+        self.position += 1;
+        self.skipWhitespace();
+        if (self.isAtEnd() or self.input[self.position] != '/') {
+            return parser_errors.AstError.ExpectedRegexDelimiter;
+        }
+        self.position += 1; // 跳过开头的 /
+        const start_pos = self.position;
+        while (!self.isAtEnd()) {
+            const ch = self.peek().?;
+            if (ch == '\\') {
+                self.position += 1;
+                if (!self.isAtEnd()) self.position += 1; // 跳过转义后的字符
+                continue;
+            }
+            if (ch == '/') {
+                const end_pos = self.position;
+                self.position += 1; // 跳过结尾的 /
+                return self.input[start_pos..end_pos];
+            }
+            self.position += 1;
+        }
+        return parser_errors.AstError.UnterminatedRegex;
+    }
+
     // 第四步：解析字面量字符串，例如: "hello", "+", "-"
     // 支持双引号包围的字符串
     pub fn parseString(self: *PEZParser) !?[]const u8 {
@@ -248,9 +276,18 @@ pub const PEZParser = struct {
                 _ = self.advance();
                 return rule_ptr;
             }
+
+            // 4. 检查是否是正则表达式（~/pattern/）
+            if (ch == '~') {
+                const pattern = try self.parseRegex();
+                const pattern_copy = try self.allocator.dupe(u8, pattern);
+                const rule_ptr = try self.allocator.create(Rule);
+                rule_ptr.* = Rule{ .regex = pattern_copy };
+                return rule_ptr;
+            }
         }
 
-        // 4. 否则，尝试解析标识符（规则引用）
+        // 5. 否则，尝试解析标识符（规则引用）
         const ident_opt = try self.parseIdentifier();
         if (ident_opt) |name| {
             const rule_ptr = try self.allocator.create(Rule);
@@ -259,7 +296,7 @@ pub const PEZParser = struct {
             return rule_ptr;
         }
 
-        // 5. 如果都不是，返回错误
+        // 6. 如果都不是，返回错误
         return parser_errors.AstError.NotAnAst;
     }
 
